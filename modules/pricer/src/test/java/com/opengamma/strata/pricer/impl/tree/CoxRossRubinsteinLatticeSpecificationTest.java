@@ -24,7 +24,7 @@ public class CoxRossRubinsteinLatticeSpecificationTest {
   private static final double DT = 2d / NUM;
 
   public void test_formula() {
-    CoxRossRubinsteinLatticeSpecification test = new CoxRossRubinsteinLatticeSpecification();
+    CoxRossRubinsteinLatticeSpecification test = CoxRossRubinsteinLatticeSpecification.of(NUM);
     DoubleArray computed = test.getParametersTrinomial(VOL, RATE, DT);
     double u = Math.exp(VOL * Math.sqrt(2.0 * DT));
     double d = Math.exp(-VOL * Math.sqrt(2.0 * DT));

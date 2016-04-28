@@ -6,6 +6,7 @@
 package com.opengamma.strata.pricer.impl.tree;
 
 import com.opengamma.strata.collect.array.DoubleArray;
+import com.opengamma.strata.collect.array.DoubleMatrix;
 
 /**
  * Option function interface used in tree option pricing.
@@ -27,13 +28,6 @@ public interface OptionFunction {
   public abstract double getTimeToExpiry();
 
   /**
-   * Obtains number of time steps.
-   * 
-   * @return number of time steps
-   */
-  public abstract int getNumberOfSteps();
-
-  /**
    * Computes payoff at expiry for trinomial tree.
    * <p>
    * The payoff values for individual nodes at expiry are computed.
@@ -41,13 +35,30 @@ public interface OptionFunction {
    * 
    * @param spot  the spot
    * @param downFactor  the down factor
-   * @param middleOverDown  middle factor divided by down factor
+   * @param middleFactor  middle factor
    * @return the payoff at 
    */
-  public abstract DoubleArray getPayoffAtExpiryTrinomial(
+  public default DoubleArray getPayoffAtExpiryTrinomial(
       double spot,
       double downFactor,
-      double middleOverDown);
+      double middleFactor,
+      int NumberOfSteps) {
+
+    int nNodes = 2 * NumberOfSteps + 1;
+    double[] values = new double[nNodes];
+    for (int i = 0; i < nNodes; ++i) {
+      values[i] = spot * Math.pow(downFactor, NumberOfSteps - i) * Math.pow(middleFactor, i);
+    }
+    return getPayoffAtExpiryTrinomial(DoubleArray.ofUnsafe(values));
+  }
+
+  /**
+   * Computes payoff at expiry for trinomial tree.
+   * 
+   * @param stateValue
+   * @return
+   */
+  public abstract DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue);
 
   /**
    * Computes the option values in the intermediate nodes.
@@ -82,6 +93,25 @@ public interface OptionFunction {
     int nNodes = 2 * i + 1;
     double[] res = new double[nNodes];
     for (int j = 0; j < nNodes; ++j) {
+      res[j] = discountFactor *
+          (upProbability * values.get(j + 2) + middleProbability * values.get(j + 1) + downProbability * values.get(j));
+    }
+    return DoubleArray.ofUnsafe(res);
+  }
+
+  public default DoubleArray getNextOptionValues(
+      double discountFactor,
+      DoubleMatrix transitionProbability,
+      DoubleArray stateValue,
+      DoubleArray values,
+      int i) {
+
+    int nNodes = 2 * i + 1;
+    double[] res = new double[nNodes];
+    for (int j = 0; j < nNodes; ++j) {
+      double upProbability = transitionProbability.get(j, 2);
+      double middleProbability = transitionProbability.get(j, 1);
+      double downProbability = transitionProbability.get(j, 0);
       res[j] = discountFactor *
           (upProbability * values.get(j + 2) + middleProbability * values.get(j + 1) + downProbability * values.get(j));
     }

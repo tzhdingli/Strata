@@ -24,7 +24,6 @@ import org.joda.beans.impl.direct.DirectMetaProperty;
 import org.joda.beans.impl.direct.DirectMetaPropertyMap;
 
 import com.opengamma.strata.basics.PutCall;
-import com.opengamma.strata.collect.ArgChecker;
 import com.opengamma.strata.collect.array.DoubleArray;
 
 /**
@@ -51,11 +50,6 @@ public final class EuropeanVanillaOptionFunction
    */
   @PropertyDefinition
   private final double sign;
-  /**
-   * The number of time steps.
-   */
-  @PropertyDefinition(overrideGet = true)
-  final int numberOfSteps;
 
   //-------------------------------------------------------------------------
   /**
@@ -64,24 +58,32 @@ public final class EuropeanVanillaOptionFunction
    * @param strike  the strike
    * @param timeToExpiry  the time to expiry
    * @param putCall  put or call
-   * @param numberOfSteps  number of time steps
    * @return the instance
    */
-  public static EuropeanVanillaOptionFunction of(double strike, double timeToExpiry, PutCall putCall, int numberOfSteps) {
-    ArgChecker.isTrue(numberOfSteps > 0, "numberOfSteps must be positive");
+  public static EuropeanVanillaOptionFunction of(double strike, double timeToExpiry, PutCall putCall) {
     double sign = putCall.isCall() ? 1d : -1d;
-    return new EuropeanVanillaOptionFunction(strike, timeToExpiry, sign, numberOfSteps);
+    return new EuropeanVanillaOptionFunction(strike, timeToExpiry, sign);
   }
 
   //-------------------------------------------------------------------------
+  //  @Override
+  //  public DoubleArray getPayoffAtExpiryTrinomial(double spot, double downFactor, double middleOverDown) {
+  //    int nNodes = 2 * numberOfSteps + 1;
+  //    double[] values = new double[nNodes];
+  //    double priceTmp = spot * Math.pow(downFactor, numberOfSteps);
+  //    for (int i = 0; i < nNodes; ++i) {
+  //      values[i] = Math.max(sign * (priceTmp - strike), 0d);
+  //      priceTmp *= middleOverDown;
+  //    }
+  //    return DoubleArray.ofUnsafe(values);
+  //  }
+
   @Override
-  public DoubleArray getPayoffAtExpiryTrinomial(double spot, double downFactor, double middleOverDown) {
-    int nNodes = 2 * numberOfSteps + 1;
+  public DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue) {
+    int nNodes = stateValue.size();
     double[] values = new double[nNodes];
-    double priceTmp = spot * Math.pow(downFactor, numberOfSteps);
     for (int i = 0; i < nNodes; ++i) {
-      values[i] = Math.max(sign * (priceTmp - strike), 0d);
-      priceTmp *= middleOverDown;
+      values[i] = Math.max(sign * (stateValue.get(i) - strike), 0d);
     }
     return DoubleArray.ofUnsafe(values);
   }
@@ -108,12 +110,10 @@ public final class EuropeanVanillaOptionFunction
   private EuropeanVanillaOptionFunction(
       double strike,
       double timeToExpiry,
-      double sign,
-      int numberOfSteps) {
+      double sign) {
     this.strike = strike;
     this.timeToExpiry = timeToExpiry;
     this.sign = sign;
-    this.numberOfSteps = numberOfSteps;
   }
 
   @Override
@@ -163,16 +163,6 @@ public final class EuropeanVanillaOptionFunction
   }
 
   //-----------------------------------------------------------------------
-  /**
-   * Gets the number of time steps.
-   * @return the value of the property
-   */
-  @Override
-  public int getNumberOfSteps() {
-    return numberOfSteps;
-  }
-
-  //-----------------------------------------------------------------------
   @Override
   public boolean equals(Object obj) {
     if (obj == this) {
@@ -182,8 +172,7 @@ public final class EuropeanVanillaOptionFunction
       EuropeanVanillaOptionFunction other = (EuropeanVanillaOptionFunction) obj;
       return JodaBeanUtils.equal(strike, other.strike) &&
           JodaBeanUtils.equal(timeToExpiry, other.timeToExpiry) &&
-          JodaBeanUtils.equal(sign, other.sign) &&
-          (numberOfSteps == other.numberOfSteps);
+          JodaBeanUtils.equal(sign, other.sign);
     }
     return false;
   }
@@ -194,18 +183,16 @@ public final class EuropeanVanillaOptionFunction
     hash = hash * 31 + JodaBeanUtils.hashCode(strike);
     hash = hash * 31 + JodaBeanUtils.hashCode(timeToExpiry);
     hash = hash * 31 + JodaBeanUtils.hashCode(sign);
-    hash = hash * 31 + JodaBeanUtils.hashCode(numberOfSteps);
     return hash;
   }
 
   @Override
   public String toString() {
-    StringBuilder buf = new StringBuilder(160);
+    StringBuilder buf = new StringBuilder(128);
     buf.append("EuropeanVanillaOptionFunction{");
     buf.append("strike").append('=').append(strike).append(',').append(' ');
     buf.append("timeToExpiry").append('=').append(timeToExpiry).append(',').append(' ');
-    buf.append("sign").append('=').append(sign).append(',').append(' ');
-    buf.append("numberOfSteps").append('=').append(JodaBeanUtils.toString(numberOfSteps));
+    buf.append("sign").append('=').append(JodaBeanUtils.toString(sign));
     buf.append('}');
     return buf.toString();
   }
@@ -236,19 +223,13 @@ public final class EuropeanVanillaOptionFunction
     private final MetaProperty<Double> sign = DirectMetaProperty.ofImmutable(
         this, "sign", EuropeanVanillaOptionFunction.class, Double.TYPE);
     /**
-     * The meta-property for the {@code numberOfSteps} property.
-     */
-    private final MetaProperty<Integer> numberOfSteps = DirectMetaProperty.ofImmutable(
-        this, "numberOfSteps", EuropeanVanillaOptionFunction.class, Integer.TYPE);
-    /**
      * The meta-properties.
      */
     private final Map<String, MetaProperty<?>> metaPropertyMap$ = new DirectMetaPropertyMap(
         this, null,
         "strike",
         "timeToExpiry",
-        "sign",
-        "numberOfSteps");
+        "sign");
 
     /**
      * Restricted constructor.
@@ -265,8 +246,6 @@ public final class EuropeanVanillaOptionFunction
           return timeToExpiry;
         case 3530173:  // sign
           return sign;
-        case -1323103225:  // numberOfSteps
-          return numberOfSteps;
       }
       return super.metaPropertyGet(propertyName);
     }
@@ -311,14 +290,6 @@ public final class EuropeanVanillaOptionFunction
       return sign;
     }
 
-    /**
-     * The meta-property for the {@code numberOfSteps} property.
-     * @return the meta-property, not null
-     */
-    public MetaProperty<Integer> numberOfSteps() {
-      return numberOfSteps;
-    }
-
     //-----------------------------------------------------------------------
     @Override
     protected Object propertyGet(Bean bean, String propertyName, boolean quiet) {
@@ -329,8 +300,6 @@ public final class EuropeanVanillaOptionFunction
           return ((EuropeanVanillaOptionFunction) bean).getTimeToExpiry();
         case 3530173:  // sign
           return ((EuropeanVanillaOptionFunction) bean).getSign();
-        case -1323103225:  // numberOfSteps
-          return ((EuropeanVanillaOptionFunction) bean).getNumberOfSteps();
       }
       return super.propertyGet(bean, propertyName, quiet);
     }
@@ -355,7 +324,6 @@ public final class EuropeanVanillaOptionFunction
     private double strike;
     private double timeToExpiry;
     private double sign;
-    private int numberOfSteps;
 
     /**
      * Restricted constructor.
@@ -373,8 +341,6 @@ public final class EuropeanVanillaOptionFunction
           return timeToExpiry;
         case 3530173:  // sign
           return sign;
-        case -1323103225:  // numberOfSteps
-          return numberOfSteps;
         default:
           throw new NoSuchElementException("Unknown property: " + propertyName);
       }
@@ -391,9 +357,6 @@ public final class EuropeanVanillaOptionFunction
           break;
         case 3530173:  // sign
           this.sign = (Double) newValue;
-          break;
-        case -1323103225:  // numberOfSteps
-          this.numberOfSteps = (Integer) newValue;
           break;
         default:
           throw new NoSuchElementException("Unknown property: " + propertyName);
@@ -430,19 +393,17 @@ public final class EuropeanVanillaOptionFunction
       return new EuropeanVanillaOptionFunction(
           strike,
           timeToExpiry,
-          sign,
-          numberOfSteps);
+          sign);
     }
 
     //-----------------------------------------------------------------------
     @Override
     public String toString() {
-      StringBuilder buf = new StringBuilder(160);
+      StringBuilder buf = new StringBuilder(128);
       buf.append("EuropeanVanillaOptionFunction.Builder{");
       buf.append("strike").append('=').append(JodaBeanUtils.toString(strike)).append(',').append(' ');
       buf.append("timeToExpiry").append('=').append(JodaBeanUtils.toString(timeToExpiry)).append(',').append(' ');
-      buf.append("sign").append('=').append(JodaBeanUtils.toString(sign)).append(',').append(' ');
-      buf.append("numberOfSteps").append('=').append(JodaBeanUtils.toString(numberOfSteps));
+      buf.append("sign").append('=').append(JodaBeanUtils.toString(sign));
       buf.append('}');
       return buf.toString();
     }

@@ -26,16 +26,15 @@ public class EuropeanVanillaOptionFunctionTest {
   private static final int NUM = 35;
 
   public void test_of() {
-    EuropeanVanillaOptionFunction test = EuropeanVanillaOptionFunction.of(STRIKE, TIME_TO_EXPIRY, PutCall.PUT, NUM);
+    EuropeanVanillaOptionFunction test = EuropeanVanillaOptionFunction.of(STRIKE, TIME_TO_EXPIRY, PutCall.PUT);
     assertEquals(test.getSign(), -1d);
     assertEquals(test.getStrike(), STRIKE);
     assertEquals(test.getTimeToExpiry(), TIME_TO_EXPIRY);
-    assertEquals(test.getNumberOfSteps(), NUM);
   }
 
   public void test_optionPrice() {
     double tol = 1.0e-12;
-    EuropeanVanillaOptionFunction test = EuropeanVanillaOptionFunction.of(STRIKE, TIME_TO_EXPIRY, PutCall.PUT, NUM);
+    EuropeanVanillaOptionFunction test = EuropeanVanillaOptionFunction.of(STRIKE, TIME_TO_EXPIRY, PutCall.PUT);
     double spot = 100d;
     double u = 1.05;
     double d = 0.98;
@@ -44,7 +43,7 @@ public class EuropeanVanillaOptionFunctionTest {
     double dp = 0.25;
     double mp = 1d - up - dp;
     // test getPayoffAtExpiryTrinomial
-    DoubleArray computedPayoff = test.getPayoffAtExpiryTrinomial(spot, d, m / d);
+    DoubleArray computedPayoff = test.getPayoffAtExpiryTrinomial(spot, d, m, NUM);
     int expectedSize = 2 * NUM + 1;
     assertEquals(computedPayoff.size(), expectedSize);
     for (int i = 0; i < expectedSize; ++i) {
@@ -73,20 +72,20 @@ public class EuropeanVanillaOptionFunctionTest {
   private static final double[] INTERESTS = new double[] {-0.01, 0.0, 0.05 };
   private static final double[] VOLS = new double[] {0.05, 0.1, 0.5 };
   private static final double[] DIVIDENDS = new double[] {0.0, 0.02 };
-  private static final LatticeSpecification LATTICE = new CoxRossRubinsteinLatticeSpecification();
 
   public void test_trinomialTree() {
     int nSteps = 135;
+    LatticeSpecification lattice = CoxRossRubinsteinLatticeSpecification.of(nSteps);
     double tol = 5.0e-3;
     for (boolean isCall : new boolean[] {true, false }) {
       for (double strike : STRIKES) {
         for (double interest : INTERESTS) {
           for (double vol : VOLS) {
             for (double dividend : DIVIDENDS) {
-              OptionFunction function = EuropeanVanillaOptionFunction.of(strike, TIME, PutCall.ofPut(!isCall), nSteps);
+              OptionFunction function = EuropeanVanillaOptionFunction.of(strike, TIME, PutCall.ofPut(!isCall));
               double exact =
                   BlackScholesFormulaRepository.price(SPOT, strike, TIME, vol, interest, interest - dividend, isCall);
-              double computed = TRINOMIAL_TREE.optionPrice(LATTICE, function, SPOT, vol, interest, dividend);
+              double computed = TRINOMIAL_TREE.optionPrice(lattice, function, SPOT, vol, interest, dividend);
               assertEquals(computed, exact, Math.max(exact, 1d) * tol);
             }
           }

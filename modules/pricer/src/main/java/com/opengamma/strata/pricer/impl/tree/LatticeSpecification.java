@@ -18,6 +18,13 @@ import com.opengamma.strata.collect.array.DoubleArray;
 public interface LatticeSpecification {
 
   /**
+   * Obtains number of time steps.
+   * 
+   * @return number of time steps
+   */
+  public abstract int getNumberOfSteps();
+
+  /**
    * Computes parameters for uniform trinomial tree. 
    * <p>
    * The trinomial tree parameters are represented as {@code DoubleArray} containing [0] up factor, [1] middle factor, 

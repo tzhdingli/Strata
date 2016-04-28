@@ -5,10 +5,14 @@
  */
 package com.opengamma.strata.pricer.impl.volatility.local;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.Function;
 
 import com.opengamma.strata.basics.PutCall;
 import com.opengamma.strata.collect.array.DoubleArray;
+import com.opengamma.strata.collect.array.DoubleMatrix;
 import com.opengamma.strata.market.ValueType;
 import com.opengamma.strata.market.interpolator.CurveExtrapolators;
 import com.opengamma.strata.market.interpolator.CurveInterpolators;
@@ -26,6 +30,7 @@ import com.opengamma.strata.pricer.impl.tree.CoxRossRubinsteinLatticeSpecificati
 import com.opengamma.strata.pricer.impl.tree.EuropeanVanillaOptionFunction;
 import com.opengamma.strata.pricer.impl.tree.LatticeSpecification;
 import com.opengamma.strata.pricer.impl.tree.OptionFunction;
+import com.opengamma.strata.pricer.impl.tree.RecombiningTrinomialTreeData;
 import com.opengamma.strata.pricer.impl.tree.TrinomialTree;
 
 /**
@@ -39,10 +44,6 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
    * Trinomial tree. 
    */
   private static final TrinomialTree TREE = new TrinomialTree();
-  /**
-   * The lattice specification.
-   */
-  private static final LatticeSpecification CRR = new CoxRossRubinsteinLatticeSpecification();
   
   /**
    * Default interpolator and extrapolator for strike dimension. 
@@ -92,6 +93,164 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
     this.nSteps = nSteps;
     this.maxTime = maxTime;
     this.interpolator = interpolator;
+  }
+
+  public RecombiningTrinomialTreeData caribrateImpliedVolatility(
+      Surface impliedVolatilitySurface,
+      double spot,
+      Function<Double, Double> interestRate,
+      Function<Double, Double> dividendRate) {
+
+    double[][] stateValue = new double[nSteps + 1][];
+    double[] df = new double[nSteps];
+    List<DoubleMatrix> probability = new ArrayList<DoubleMatrix>(nSteps);
+
+    int nTotal = (nSteps - 1) * (nSteps - 1) + 1;
+    double[] timeRes = new double[nTotal];
+    double[] spotRes = new double[nTotal];
+    double[] volRes = new double[nTotal];
+    // uniform grid based on CoxRossRubinsteinLatticeSpecification
+    double volatility = impliedVolatilitySurface.zValue(maxTime, spot);
+    double dt = maxTime / nSteps;
+    double dx = volatility * Math.sqrt(2d * dt);
+    double upFactor = Math.exp(dx);
+    double downFactor = Math.exp(-dx);
+    double[] adSec = new double[2 * nSteps + 1];
+    double[] assetPrice = new double[2 * nSteps + 1];
+    for (int i = nSteps; i > -1; --i) {
+      if (i == 0) {
+        double discountFactor = Math.exp(-interestRate.apply(dt) * dt);
+        double fwdFactor = Math.exp((interestRate.apply(dt) - dividendRate.apply(dt)) * dt);
+        double upProb = adSec[2] / discountFactor;
+        double midProb = getMiddle(upProb, fwdFactor, spot, assetPrice[0], assetPrice[1], assetPrice[2]);
+        double dwProb = 1d - upProb - midProb;
+        double fwd = spot * fwdFactor;
+        timeRes[nTotal - 1] = dt;
+        spotRes[nTotal - 1] = spot;
+        double var = (dwProb * Math.pow(assetPrice[0] - fwd, 2)
+            + midProb * Math.pow(assetPrice[1] - fwd, 2)
+            + upProb * Math.pow(assetPrice[2] - fwd, 2)) / (fwd * fwd * dt);
+        volRes[nTotal - 1] = Math.sqrt(0.5 * (var + volRes[nTotal - 2] * volRes[nTotal - 2]));
+
+        probability.add(0, DoubleMatrix.ofUnsafe(new double[][] {{dwProb, midProb, upProb } }));
+        df[i] = discountFactor;
+        stateValue[0] = new double[] {spot };
+      } else {
+        double time = dt * i;
+        double zeroRate = interestRate.apply(time);
+        double zeroDividendRate = dividendRate.apply(time);
+        double zeroCostRate = zeroRate - zeroDividendRate;
+        int nNodes = 2 * i + 1;
+        double[] assetPriceLocal = new double[nNodes];
+        double[] callOptionPrice = new double[nNodes];
+        double[] putOptionPrice = new double[nNodes];
+        int position = i - 1;
+        LatticeSpecification crr = CoxRossRubinsteinLatticeSpecification.of(i);
+        double assetTmp = spot * Math.pow(upFactor, i);
+        // call options for upper half nodes
+        for (int j = nNodes - 1; j > position - 1; --j) {
+          assetPriceLocal[j] = assetTmp;
+          double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
+          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.CALL);
+          double price = TREE.optionPrice(crr, call, spot, impliedVol, zeroRate, zeroDividendRate);
+          //          System.out.println(time + "\t" + assetPriceLocal[j] + "\t" + impliedVol);
+          callOptionPrice[j] = price > 0d ? price : BlackScholesFormulaRepository.price(
+              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, true);
+          assetTmp *= downFactor;
+        }
+        // put options for lower half nodes
+        assetTmp = spot * Math.pow(downFactor, i);
+        for (int j = 0; j < position + 2; ++j) {
+          assetPriceLocal[j] = assetTmp;
+          double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
+          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.PUT);
+          double price = TREE.optionPrice(crr, put, spot, impliedVol, zeroRate, zeroDividendRate);
+          putOptionPrice[j] = price >= 0d ? price : BlackScholesFormulaRepository.price(
+              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, false);
+          assetTmp *= upFactor;
+        }
+        double[] adSecLocal = new double[nNodes];
+        // AD security prices from call options
+        for (int j = nNodes - 1; j > position; --j) {
+          adSecLocal[j] = callOptionPrice[j - 1];
+          for (int k = j + 1; k < nNodes; ++k) {
+            adSecLocal[j] -= (assetPriceLocal[k] - assetPriceLocal[j - 1]) * adSecLocal[k];
+          }
+          adSecLocal[j] /= (assetPriceLocal[j] - assetPriceLocal[j - 1]);
+        }
+        ++position;
+        // AD security prices from put options
+        for (int j = 0; j < position; ++j) {
+          adSecLocal[j] = putOptionPrice[j + 1];
+          for (int k = 0; k < j; ++k) {
+            adSecLocal[j] -= (assetPriceLocal[j + 1] - assetPriceLocal[k]) * adSecLocal[k];
+          }
+          adSecLocal[j] /= (assetPriceLocal[j + 1] - assetPriceLocal[j]);
+        }
+        if (i != nSteps) {
+          double timeNext = dt * (i - 1);
+          double rate = (zeroRate * time - interestRate.apply(timeNext) * timeNext) / dt;
+          double dividend = (zeroDividendRate * time - dividendRate.apply(timeNext) * timeNext) / dt;
+          double cost = rate - dividend;
+          double discountFactor = Math.exp(-rate * dt);
+          double fwdFactor = Math.exp(cost * dt);
+          double[][] prob = new double[nNodes][3];
+          // highest node
+          prob[nNodes - 1][2] = adSec[nNodes + 1] / adSecLocal[nNodes - 1] / discountFactor;
+          prob[nNodes - 1][1] = getMiddle(prob[nNodes - 1][2], fwdFactor, assetPriceLocal[nNodes - 1],
+              assetPrice[nNodes - 1], assetPrice[nNodes], assetPrice[nNodes + 1]);
+          prob[nNodes - 1][0] = 1d - prob[nNodes - 1][2] - prob[nNodes - 1][1];
+          correctProbability(prob[nNodes - 1], fwdFactor, assetPriceLocal[nNodes - 1], assetPrice[nNodes - 1],
+              assetPrice[nNodes], assetPrice[nNodes + 1]);
+          // second highest node
+          prob[nNodes - 2][2] = (adSec[nNodes] / discountFactor - prob[nNodes - 1][1] * adSecLocal[nNodes - 1]) /
+              adSecLocal[nNodes - 2];
+          prob[nNodes - 2][1] = getMiddle(prob[nNodes - 2][2], fwdFactor, assetPriceLocal[nNodes - 2],
+              assetPrice[nNodes - 2], assetPrice[nNodes - 1], assetPrice[nNodes]);
+          prob[nNodes - 2][0] = 1d - prob[nNodes - 2][2] - prob[nNodes - 2][1];
+          correctProbability(prob[nNodes - 2], fwdFactor, assetPriceLocal[nNodes - 2], assetPrice[nNodes - 2],
+              assetPrice[nNodes - 1], assetPrice[nNodes]);
+          // subsequent nodes 
+          for (int j = nNodes - 3; j > -1; --j) {
+            prob[j][2] = (adSec[j + 2] / discountFactor - prob[j + 2][0] * adSecLocal[j + 2] - prob[j + 1][1] *
+                adSecLocal[j + 1]) / adSecLocal[j];
+            prob[j][1] = getMiddle(prob[j][2], fwdFactor, assetPriceLocal[j], assetPrice[j], assetPrice[j + 1],
+                assetPrice[j + 2]);
+            prob[j][0] = 1d - prob[j][1] - prob[j][2];
+            correctProbability(prob[j], fwdFactor, assetPriceLocal[j], assetPrice[j], assetPrice[j + 1],
+                assetPrice[j + 2]);
+          }
+          // local variance
+          int offset = nTotal - i * i - 1;
+          double[] varBare = new double[nNodes];
+          for (int k = 0; k < nNodes; ++k) {
+            double fwd = assetPriceLocal[k] * fwdFactor;
+            varBare[k] = (prob[k][0] * Math.pow(assetPrice[k] - fwd, 2)
+                + prob[k][1] * Math.pow(assetPrice[k + 1] - fwd, 2)
+                + prob[k][2] * Math.pow(assetPrice[k + 2] - fwd, 2)) / (fwd * fwd * dt);
+            if (varBare[k] < 0d) {
+              throw new IllegalArgumentException("Negative variance");
+            }
+          }
+          // smoothing
+          for (int k = 0; k < nNodes - 2; ++k) {
+            double var = k == 0 || k == nNodes - 3 ? (varBare[k] + varBare[k + 1] + varBare[k + 2]) / 3d :
+                (varBare[k - 1] + varBare[k] + varBare[k + 1] + varBare[k + 2] + varBare[k + 3]) / 5d;
+            volRes[offset + k] = i == nSteps - 1 ? Math.sqrt(var) :
+                Math.sqrt(0.5 * (var + volRes[offset - (2 * i - k)] * volRes[offset - (2 * i - k)]));
+            timeRes[offset + k] = dt * (i + 1d);
+            spotRes[offset + k] = assetPriceLocal[k + 1];
+          }
+          probability.add(0, DoubleMatrix.ofUnsafe(prob));
+          df[i] = discountFactor;
+        }
+        stateValue[i] = Arrays.copyOf(assetPriceLocal, nNodes);
+
+        System.arraycopy(adSecLocal, 0, adSec, 0, nNodes);
+        System.arraycopy(assetPriceLocal, 0, assetPrice, 0, nNodes);
+      }
+    }
+    return RecombiningTrinomialTreeData.of(DoubleMatrix.ofUnsafe(stateValue), probability, DoubleArray.ofUnsafe(df));
   }
 
   @Override
@@ -144,27 +303,29 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
         double[] putOptionPrice = new double[nNodes];
         int position = i - 1;
         double assetTmp = spot * Math.pow(upFactor, i);
+        LatticeSpecification crr = CoxRossRubinsteinLatticeSpecification.of(i);
         // call options for upper half nodes
         for (int j = nNodes - 1; j > position - 1; --j) {
           assetPriceLocal[j] = assetTmp;
           double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
-          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.CALL, i);
-          double price = TREE.optionPrice(CRR, call, spot, impliedVol, zeroRate, zeroDividendRate);
+          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.CALL);
+          double price = TREE.optionPrice(crr, call, spot, impliedVol, zeroRate, zeroDividendRate);
+          //          System.out.println(time + "\t" + assetPriceLocal[j] + "\t" + impliedVol);
           callOptionPrice[j] = price > 0d ? price : BlackScholesFormulaRepository.price(
               spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, true);
           assetTmp *= downFactor;
-        }
+          }
         // put options for lower half nodes
         assetTmp = spot * Math.pow(downFactor, i);
         for (int j = 0; j < position + 2; ++j) {
           assetPriceLocal[j] = assetTmp;
           double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
-          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.PUT, i);
-          double price = TREE.optionPrice(CRR, put, spot, impliedVol, zeroRate, zeroDividendRate);
+          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.PUT);
+          double price = TREE.optionPrice(crr, put, spot, impliedVol, zeroRate, zeroDividendRate);
           putOptionPrice[j] = price >= 0d ? price : BlackScholesFormulaRepository.price(
               spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, false);
           assetTmp *= upFactor;
-        }
+          }
         double[] adSecLocal = new double[nNodes];
         // AD security prices from call options
         for (int j = nNodes - 1; j > position; --j) {
@@ -173,16 +334,16 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
             adSecLocal[j] -= (assetPriceLocal[k] - assetPriceLocal[j - 1]) * adSecLocal[k];
           }
           adSecLocal[j] /= (assetPriceLocal[j] - assetPriceLocal[j - 1]);
-        }
+          }
         ++position;
         // AD security prices from put options
         for (int j = 0; j < position; ++j) {
           adSecLocal[j] = putOptionPrice[j + 1];
           for (int k = 0; k < j; ++k) {
             adSecLocal[j] -= (assetPriceLocal[j + 1] - assetPriceLocal[k]) * adSecLocal[k];
-          }
+            }
           adSecLocal[j] /= (assetPriceLocal[j + 1] - assetPriceLocal[j]);
-        }
+          }
         if (i != nSteps) {
           double[][] prob = new double[nNodes][3];
           // highest node
@@ -231,11 +392,11 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
             timeRes[offset + k] = dt * (i + 1d);
             spotRes[offset + k] = assetPriceLocal[k + 1];
           }
-        }
+          }
         System.arraycopy(adSecLocal, 0, adSec, 0, nNodes);
         System.arraycopy(assetPriceLocal, 0, assetPrice, 0, nNodes);
+        }
       }
-    }
     SurfaceMetadata metadata = DefaultSurfaceMetadata.builder()
         .xValueType(ValueType.YEAR_FRACTION)
         .yValueType(ValueType.STRIKE)
@@ -248,7 +409,162 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
         DoubleArray.ofUnsafe(spotRes),
         DoubleArray.ofUnsafe(volRes),
         interpolator);
-  }
+    }
+
+  //  @Override
+  //  public InterpolatedNodalSurface localVolatilityFromImpliedVolatility(
+  //      Surface impliedVolatilitySurface,
+  //      double spot,
+  //      Function<Double, Double> interestRate,
+  //      Function<Double, Double> dividendRate) {
+  //
+  //    int nTotal = nSteps * nSteps;
+  //    double[] timeRes = new double[nTotal];
+  //    double[] spotRes = new double[nTotal];
+  //    double[] volRes = new double[nTotal];
+  //    // uniform grid based on CoxRossRubinsteinLatticeSpecification
+  //    double volatility = impliedVolatilitySurface.zValue(maxTime, spot);
+  //    double dt = maxTime / nSteps;
+  //    double dx = volatility * Math.sqrt(2d * dt);
+  //    double upFactor = Math.exp(dx);
+  //    double downFactor = Math.exp(-dx);
+  //    double[] adSec = new double[2 * nSteps + 1];
+  //    double[] assetPrice = new double[2 * nSteps + 1];
+  //    for (int i = nSteps; i > -1; --i) {
+  //      if (i == 0) {
+  //        double discountFactor = Math.exp(-interestRate.apply(dt) * dt);
+  //        double fwdFactor = Math.exp((interestRate.apply(dt) - dividendRate.apply(dt)) * dt);
+  //        double upProb = adSec[2] / discountFactor;
+  //        double midProb = getMiddle(upProb, fwdFactor, spot, assetPrice[0], assetPrice[1], assetPrice[2]);
+  //        double dwProb = 1d - upProb - midProb;
+  //        double fwd = spot * fwdFactor;
+  //        timeRes[nTotal - 1] = 0d;
+  //        spotRes[nTotal - 1] = spot;
+  //        double var = (dwProb * Math.pow(assetPrice[0] - fwd, 2)
+  //            + midProb * Math.pow(assetPrice[1] - fwd, 2)
+  //            + upProb * Math.pow(assetPrice[2] - fwd, 2)) / (fwd * fwd * dt);
+  //        volRes[nTotal - 1] = Math.sqrt(var);
+  //      } else {
+  //        double time = dt * i;
+  //        double timeNext = dt * (i - 1);
+  //        double zeroRate = interestRate.apply(time);
+  //        double zeroDividendRate = dividendRate.apply(time);
+  //        double zeroCostRate = zeroRate - zeroDividendRate;
+  //        double rate = (zeroRate * time - interestRate.apply(timeNext) * timeNext) / dt;
+  //        double dividend = (zeroDividendRate * time - dividendRate.apply(timeNext) * timeNext) / dt;
+  //        double cost = rate - dividend;
+  //        double discountFactor = Math.exp(-rate * dt);
+  //        double fwdFactor = Math.exp(cost * dt);
+  //        int nNodes = 2 * i + 1;
+  //        double[] assetPriceLocal = new double[nNodes];
+  //        double[] callOptionPrice = new double[nNodes];
+  //        double[] putOptionPrice = new double[nNodes];
+  //        int position = i - 1;
+  //        double assetTmp = spot * Math.pow(upFactor, i);
+  //        LatticeSpecification crr = CoxRossRubinsteinLatticeSpecification.of(i);
+  //        // call options for upper half nodes
+  //        for (int j = nNodes - 1; j > position - 1; --j) {
+  //          assetPriceLocal[j] = assetTmp;
+  //          double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
+  //          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.CALL);
+  //          double price = TREE.optionPrice(crr, call, spot, impliedVol, zeroRate, zeroDividendRate);
+  //          //          System.out.println(time + "\t" + assetPriceLocal[j] + "\t" + impliedVol);
+  //          callOptionPrice[j] = price > 0d ? price : BlackScholesFormulaRepository.price(
+  //              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, true);
+  //          assetTmp *= downFactor;
+  //        }
+  //        // put options for lower half nodes
+  //        assetTmp = spot * Math.pow(downFactor, i);
+  //        for (int j = 0; j < position + 2; ++j) {
+  //          assetPriceLocal[j] = assetTmp;
+  //          double impliedVol = impliedVolatilitySurface.zValue(time, assetPriceLocal[j]);
+  //          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.PUT);
+  //          double price = TREE.optionPrice(crr, put, spot, impliedVol, zeroRate, zeroDividendRate);
+  //          putOptionPrice[j] = price >= 0d ? price : BlackScholesFormulaRepository.price(
+  //              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, false);
+  //          assetTmp *= upFactor;
+  //        }
+  //        double[] adSecLocal = new double[nNodes];
+  //        // AD security prices from call options
+  //        for (int j = nNodes - 1; j > position; --j) {
+  //          adSecLocal[j] = callOptionPrice[j - 1];
+  //          for (int k = j + 1; k < nNodes; ++k) {
+  //            adSecLocal[j] -= (assetPriceLocal[k] - assetPriceLocal[j - 1]) * adSecLocal[k];
+  //          }
+  //          adSecLocal[j] /= (assetPriceLocal[j] - assetPriceLocal[j - 1]);
+  //        }
+  //        ++position;
+  //        // AD security prices from put options
+  //        for (int j = 0; j < position; ++j) {
+  //          adSecLocal[j] = putOptionPrice[j + 1];
+  //          for (int k = 0; k < j; ++k) {
+  //            adSecLocal[j] -= (assetPriceLocal[j + 1] - assetPriceLocal[k]) * adSecLocal[k];
+  //          }
+  //          adSecLocal[j] /= (assetPriceLocal[j + 1] - assetPriceLocal[j]);
+  //        }
+  //        if (i != nSteps) {
+  //          double[][] prob = new double[nNodes][3];
+  //          // highest node
+  //          prob[nNodes - 1][2] = adSec[nNodes + 1] / adSecLocal[nNodes - 1] / discountFactor;
+  //          prob[nNodes - 1][1] = getMiddle(prob[nNodes - 1][2], fwdFactor, assetPriceLocal[nNodes - 1],
+  //              assetPrice[nNodes - 1], assetPrice[nNodes], assetPrice[nNodes + 1]);
+  //          prob[nNodes - 1][0] = 1d - prob[nNodes - 1][2] - prob[nNodes - 1][1];
+  //          correctProbability(prob[nNodes - 1], fwdFactor, assetPriceLocal[nNodes - 1], assetPrice[nNodes - 1],
+  //              assetPrice[nNodes], assetPrice[nNodes + 1]);
+  //          // second highest node
+  //          prob[nNodes - 2][2] = (adSec[nNodes] / discountFactor - prob[nNodes - 1][1] * adSecLocal[nNodes - 1]) /
+  //              adSecLocal[nNodes - 2];
+  //          prob[nNodes - 2][1] = getMiddle(prob[nNodes - 2][2], fwdFactor, assetPriceLocal[nNodes - 2],
+  //              assetPrice[nNodes - 2], assetPrice[nNodes - 1], assetPrice[nNodes]);
+  //          prob[nNodes - 2][0] = 1d - prob[nNodes - 2][2] - prob[nNodes - 2][1];
+  //          correctProbability(prob[nNodes - 2], fwdFactor, assetPriceLocal[nNodes - 2], assetPrice[nNodes - 2],
+  //              assetPrice[nNodes - 1], assetPrice[nNodes]);
+  //          // subsequent nodes 
+  //          for (int j = nNodes - 3; j > -1; --j) {
+  //            prob[j][2] = (adSec[j + 2] / discountFactor - prob[j + 2][0] * adSecLocal[j + 2] - prob[j + 1][1] *
+  //                adSecLocal[j + 1]) / adSecLocal[j];
+  //            prob[j][1] = getMiddle(prob[j][2], fwdFactor, assetPriceLocal[j], assetPrice[j], assetPrice[j + 1],
+  //                assetPrice[j + 2]);
+  //            prob[j][0] = 1d - prob[j][1] - prob[j][2];
+  //            correctProbability(prob[j], fwdFactor, assetPriceLocal[j], assetPrice[j], assetPrice[j + 1],
+  //                assetPrice[j + 2]);
+  //          }
+  //          // local variance
+  //          int offset = nTotal - (i + 1) * (i + 1);
+  //          double[] varBare = new double[nNodes];
+  //          for (int k = 0; k < nNodes; ++k) {
+  //            double fwd = assetPriceLocal[k] * fwdFactor;
+  //            varBare[k] = (prob[k][0] * Math.pow(assetPrice[k] - fwd, 2)
+  //                + prob[k][1] * Math.pow(assetPrice[k + 1] - fwd, 2)
+  //                + prob[k][2] * Math.pow(assetPrice[k + 2] - fwd, 2)) / (fwd * fwd * dt);
+  //            if (varBare[k] < 0d) {
+  //              throw new IllegalArgumentException("Negative variance");
+  //            }
+  //          }
+  //          // smoothing
+  //          for (int k = 0; k < nNodes; ++k) {
+  //            volRes[offset + k] = Math.sqrt(varBare[k]);
+  //            timeRes[offset + k] = dt * i;
+  //            spotRes[offset + k] = assetPriceLocal[k];
+  //          }
+  //        }
+  //        System.arraycopy(adSecLocal, 0, adSec, 0, nNodes);
+  //        System.arraycopy(assetPriceLocal, 0, assetPrice, 0, nNodes);
+  //      }
+  //    }
+  //    SurfaceMetadata metadata = DefaultSurfaceMetadata.builder()
+  //        .xValueType(ValueType.YEAR_FRACTION)
+  //        .yValueType(ValueType.STRIKE)
+  //        .zValueType(ValueType.LOCAL_VOLATILITY)
+  //        .surfaceName(SurfaceName.of("localVol_" + impliedVolatilitySurface.getName()))
+  //        .build();
+  //    return InterpolatedNodalSurface.of(
+  //        metadata,
+  //        DoubleArray.ofUnsafe(timeRes),
+  //        DoubleArray.ofUnsafe(spotRes),
+  //        DoubleArray.ofUnsafe(volRes),
+  //        interpolator);
+  //  }
 
   @Override
   public InterpolatedNodalSurface localVolatilityFromPrice(

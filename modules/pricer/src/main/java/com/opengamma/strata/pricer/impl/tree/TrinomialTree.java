@@ -38,7 +38,7 @@ public class TrinomialTree {
       double interestRate,
       double dividendRate) {
 
-    int nSteps = function.getNumberOfSteps();
+    int nSteps = lattice.getNumberOfSteps();
     double timeToExpiry = function.getTimeToExpiry();
     double dt = timeToExpiry / (double) nSteps;
     double discount = Math.exp(-interestRate * dt);
@@ -54,12 +54,26 @@ public class TrinomialTree {
     ArgChecker.isTrue(midProbability > 0d, "midProbability should be greater than 0");
     ArgChecker.isTrue(midProbability < 1d, "midProbability should be smaller than 1");
     ArgChecker.isTrue(downProbability > 0d, "downProbability should be greater than 0");
-    DoubleArray values = function.getPayoffAtExpiryTrinomial(spot, downFactor, middleOverDown);
+    DoubleArray values = function.getPayoffAtExpiryTrinomial(spot, downFactor, middleFactor, nSteps);
     for (int i = nSteps - 1; i > -1; --i) {
       values = function.getNextOptionValues(discount, upProbability, midProbability, downProbability, values, spot,
           downFactor, middleOverDown, i);
     }
     return values.get(0);
+  }
+
+  public double optionPrice(
+      OptionFunction function,
+      RecombiningTrinomialTreeData data) {
+
+    // TODO nStep consistency 
+    int nSteps = data.getNumberOfSteps();
+    DoubleArray values = function.getPayoffAtExpiryTrinomial(data.getStateValueAtLayer(nSteps - 1));
+    for (int i = nSteps - 1; i > -1; --i) {
+      values = function.getNextOptionValues(
+          data.getDiscountFactorAtLayer(i), data.getProbabilityAtLayer(i), data.getStateValueAtLayer(i), values, i);
+    }
+    return 0d;
   }
 
 }
