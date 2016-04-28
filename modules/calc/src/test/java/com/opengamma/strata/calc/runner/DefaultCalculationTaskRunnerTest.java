@@ -26,6 +26,7 @@ import com.opengamma.strata.basics.currency.Currency;
 import com.opengamma.strata.basics.market.ReferenceData;
 import com.opengamma.strata.basics.market.TestObservableKey;
 import com.opengamma.strata.calc.Column;
+import com.opengamma.strata.calc.Results;
 import com.opengamma.strata.calc.config.Measure;
 import com.opengamma.strata.calc.config.Measures;
 import com.opengamma.strata.calc.marketdata.CalculationEnvironment;
@@ -57,7 +58,8 @@ public class DefaultCalculationTaskRunnerTest {
   public void unwrapScenarioResults() {
     ScenarioResult<String> scenarioResult = ScenarioResult.of("foo");
     ScenarioResultFunction fn = new ScenarioResultFunction(Measures.PRESENT_VALUE, scenarioResult);
-    CalculationTask task = CalculationTask.of(TARGET, Measures.PRESENT_VALUE, 0, 0, fn, MarketDataMappings.empty(), NATURAL);
+    CalculationTaskCell cell = CalculationTaskCell.of(0, 0, Measures.PRESENT_VALUE, NATURAL);
+    CalculationTask task = CalculationTask.of(TARGET, fn, MarketDataMappings.empty(), cell);
     Column column = Column.of(Measures.PRESENT_VALUE);
     CalculationTasks tasks = CalculationTasks.of(ImmutableList.of(task), ImmutableList.of(column));
 
@@ -83,7 +85,8 @@ public class DefaultCalculationTaskRunnerTest {
   public void unwrapMultipleScenarioResults() {
     ScenarioResult<String> scenarioResult = ScenarioResult.of("foo", "bar");
     ScenarioResultFunction fn = new ScenarioResultFunction(Measures.PAR_RATE, scenarioResult);
-    CalculationTask task = CalculationTask.of(TARGET, Measures.PAR_RATE, 0, 0, fn, MarketDataMappings.empty(), NATURAL);
+    CalculationTaskCell cell = CalculationTaskCell.of(0, 0, Measures.PAR_RATE, NATURAL);
+    CalculationTask task = CalculationTask.of(TARGET, fn, MarketDataMappings.empty(), cell);
     Column column = Column.of(Measures.PAR_RATE);
     CalculationTasks tasks = CalculationTasks.of(ImmutableList.of(task), ImmutableList.of(column));
 
@@ -100,7 +103,8 @@ public class DefaultCalculationTaskRunnerTest {
   public void unwrapScenarioResultsAsync() {
     ScenarioResult<String> scenarioResult = ScenarioResult.of("foo");
     ScenarioResultFunction fn = new ScenarioResultFunction(Measures.PRESENT_VALUE, scenarioResult);
-    CalculationTask task = CalculationTask.of(TARGET, Measures.PRESENT_VALUE, 0, 0, fn, MarketDataMappings.empty(), NATURAL);
+    CalculationTaskCell cell = CalculationTaskCell.of(0, 0, Measures.PRESENT_VALUE, NATURAL);
+    CalculationTask task = CalculationTask.of(TARGET, fn, MarketDataMappings.empty(), cell);
     Column column = Column.of(Measures.PRESENT_VALUE);
     CalculationTasks tasks = CalculationTasks.of(ImmutableList.of(task), ImmutableList.of(column));
 
@@ -142,7 +146,12 @@ public class DefaultCalculationTaskRunnerTest {
     }
 
     @Override
-    public FunctionRequirements requirements(TestTarget target, Set<Measure> measures, ReferenceData refData) {
+    public FunctionRequirements requirements(
+        TestTarget target,
+        Set<Measure> measures,
+        CalculationParameters parameters,
+        ReferenceData refData) {
+
       return FunctionRequirements.builder()
           .singleValueRequirements(
               ImmutableSet.of(
@@ -156,6 +165,7 @@ public class DefaultCalculationTaskRunnerTest {
     public Map<Measure, Result<?>> calculate(
         TestTarget target,
         Set<Measure> measures,
+        CalculationParameters parameters,
         CalculationMarketData marketData,
         ReferenceData refData) {
 
@@ -191,7 +201,12 @@ public class DefaultCalculationTaskRunnerTest {
     }
 
     @Override
-    public FunctionRequirements requirements(TestTarget target, Set<Measure> measures, ReferenceData refData) {
+    public FunctionRequirements requirements(
+        TestTarget target,
+        Set<Measure> measures,
+        CalculationParameters parameters,
+        ReferenceData refData) {
+
       return FunctionRequirements.empty();
     }
 
@@ -199,6 +214,7 @@ public class DefaultCalculationTaskRunnerTest {
     public Map<Measure, Result<?>> calculate(
         TestTarget target,
         Set<Measure> measures,
+        CalculationParameters parameters,
         CalculationMarketData marketData,
         ReferenceData refData) {
 

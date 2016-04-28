@@ -11,14 +11,13 @@ import static com.opengamma.strata.basics.PayReceive.RECEIVE;
 import static com.opengamma.strata.basics.currency.Currency.GBP;
 import static com.opengamma.strata.basics.date.BusinessDayConventions.FOLLOWING;
 import static com.opengamma.strata.basics.date.BusinessDayConventions.MODIFIED_FOLLOWING;
-import static com.opengamma.strata.basics.date.DayCounts.ACT_360;
 import static com.opengamma.strata.basics.date.DayCounts.ACT_365F;
+import static com.opengamma.strata.basics.date.DayCounts.ONE_ONE;
 import static com.opengamma.strata.basics.date.HolidayCalendarIds.GBLO;
 import static com.opengamma.strata.basics.index.PriceIndices.GB_HICP;
 import static com.opengamma.strata.basics.index.PriceIndices.GB_RPI;
 import static com.opengamma.strata.basics.index.PriceIndices.GB_RPIX;
 import static com.opengamma.strata.basics.schedule.Frequency.P3M;
-import static com.opengamma.strata.basics.schedule.Frequency.P6M;
 import static com.opengamma.strata.collect.TestHelper.assertSerialization;
 import static com.opengamma.strata.collect.TestHelper.assertThrowsIllegalArg;
 import static com.opengamma.strata.collect.TestHelper.coverBeanEquals;
@@ -34,8 +33,12 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import com.google.common.collect.ImmutableMap;
+import com.opengamma.strata.basics.currency.Currency;
 import com.opengamma.strata.basics.date.BusinessDayAdjustment;
 import com.opengamma.strata.basics.date.DaysAdjustment;
+import com.opengamma.strata.basics.date.HolidayCalendarId;
+import com.opengamma.strata.basics.schedule.Frequency;
+import com.opengamma.strata.product.swap.CompoundingMethod;
 import com.opengamma.strata.product.swap.Swap;
 import com.opengamma.strata.product.swap.SwapTrade;
 
@@ -45,19 +48,19 @@ import com.opengamma.strata.product.swap.SwapTrade;
 @Test
 public class FixedInflationSwapConventionTest {
 
+  private static final Period LAG_3M = Period.ofMonths(3);
   private static final double NOTIONAL_2M = 2_000_000d;
   private static final BusinessDayAdjustment BDA_FOLLOW = BusinessDayAdjustment.of(FOLLOWING, GBLO);
   private static final BusinessDayAdjustment BDA_MOD_FOLLOW = BusinessDayAdjustment.of(MODIFIED_FOLLOWING, GBLO);
   private static final DaysAdjustment PLUS_ONE_DAY = DaysAdjustment.ofBusinessDays(1, GBLO);
 
   private static final String NAME = "GBP-Swap";
-  private static final FixedRateSwapLegConvention FIXED =
-      FixedRateSwapLegConvention.of(GBP, ACT_360, P6M, BDA_FOLLOW);
+  private static final FixedRateSwapLegConvention FIXED = fixedLegZcConvention(GBP, GBLO);
   private static final FixedRateSwapLegConvention FIXED2 =
       FixedRateSwapLegConvention.of(GBP, ACT_365F, P3M, BDA_MOD_FOLLOW);
-  private static final InflationRateSwapLegConvention INFL = InflationRateSwapLegConvention.of(GB_HICP);
-  private static final InflationRateSwapLegConvention INFL2 = InflationRateSwapLegConvention.of(GB_RPI);
-  private static final InflationRateSwapLegConvention INFL3 = InflationRateSwapLegConvention.of(GB_RPIX);
+  private static final InflationRateSwapLegConvention INFL = InflationRateSwapLegConvention.of(GB_HICP, LAG_3M);
+  private static final InflationRateSwapLegConvention INFL2 = InflationRateSwapLegConvention.of(GB_RPI, LAG_3M);
+  private static final InflationRateSwapLegConvention INFL3 = InflationRateSwapLegConvention.of(GB_RPIX, LAG_3M);
 
   //-------------------------------------------------------------------------
   public void test_of() {
@@ -111,11 +114,11 @@ public class FixedInflationSwapConventionTest {
         PLUS_ONE_DAY);
     LocalDate tradeDate = LocalDate.of(2015, 5, 5);
     LocalDate startDate = date(2015, 8, 5);
-    LocalDate endDate = date(2015, 11, 5);
-    SwapTrade test = base.toTrade(tradeDate, startDate, endDate, Period.ofMonths(3), BUY, NOTIONAL_2M, 0.25d);
+    LocalDate endDate = date(2017, 8, 5);
+    SwapTrade test = base.toTrade(tradeDate, startDate, endDate, BUY, NOTIONAL_2M, 0.25d);
     Swap expected = Swap.of(
         FIXED.toLeg(startDate, endDate, PAY, NOTIONAL_2M, 0.25d),
-        INFL.toLeg(startDate, endDate, RECEIVE, Period.ofMonths(3), BDA_FOLLOW, PLUS_ONE_DAY, NOTIONAL_2M));
+        INFL.toLeg(startDate, endDate, RECEIVE, BDA_FOLLOW, PLUS_ONE_DAY, NOTIONAL_2M));
     assertEquals(test.getInfo().getTradeDate(), Optional.of(tradeDate));
     assertEquals(test.getProduct(), expected);
   }
@@ -124,8 +127,8 @@ public class FixedInflationSwapConventionTest {
   @DataProvider(name = "name")
   static Object[][] data_name() {
     return new Object[][] {
-        {FixedInflationSwapConventions.GBP_FIXED_6M_GB_HCIP, "GBP-FIXED-6M-GB-HCIP"},
-        {FixedInflationSwapConventions.USD_FIXED_6M_US_CPI, "USD-FIXED-6M-US-CPI"},
+        {FixedInflationSwapConventions.GBP_FIXED_ZC_GB_HCIP, "GBP-FIXED-ZC-GB-HCIP"},
+        {FixedInflationSwapConventions.USD_FIXED_ZC_US_CPI, "USD-FIXED-ZC-US-CPI"},
     };
   }
 
@@ -192,6 +195,20 @@ public class FixedInflationSwapConventionTest {
         BDA_FOLLOW, 
         PLUS_ONE_DAY);
     assertSerialization(test);
+  }
+  
+  // Create a zero-coupon fixed leg convention
+  private static FixedRateSwapLegConvention fixedLegZcConvention(Currency ccy, HolidayCalendarId cal) {
+    return FixedRateSwapLegConvention.builder()
+        .paymentFrequency(Frequency.TERM)
+        .accrualFrequency(Frequency.P12M)
+        .accrualBusinessDayAdjustment(BusinessDayAdjustment.of(MODIFIED_FOLLOWING, cal))
+        .startDateBusinessDayAdjustment(BusinessDayAdjustment.of(MODIFIED_FOLLOWING, cal))
+        .endDateBusinessDayAdjustment(BusinessDayAdjustment.of(MODIFIED_FOLLOWING, cal))
+        .compoundingMethod(CompoundingMethod.STRAIGHT)
+        .dayCount(ONE_ONE)
+        .currency(ccy)
+        .build();
   }
 
 }

@@ -12,6 +12,7 @@ import static com.opengamma.strata.function.StandardComponents.marketDataFactory
 import static com.opengamma.strata.function.marketdata.curve.CurveTestUtils.fixedIborSwapNode;
 import static com.opengamma.strata.function.marketdata.curve.CurveTestUtils.fraNode;
 import static com.opengamma.strata.function.marketdata.curve.CurveTestUtils.id;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.offset;
 
 import java.time.LocalDate;
@@ -42,24 +43,20 @@ import com.opengamma.strata.basics.market.ObservableKey;
 import com.opengamma.strata.basics.market.ReferenceData;
 import com.opengamma.strata.calc.CalculationRules;
 import com.opengamma.strata.calc.Column;
+import com.opengamma.strata.calc.Results;
 import com.opengamma.strata.calc.config.MarketDataRules;
 import com.opengamma.strata.calc.config.Measure;
 import com.opengamma.strata.calc.config.Measures;
-import com.opengamma.strata.calc.config.ReportingCurrency;
-import com.opengamma.strata.calc.config.pricing.DefaultFunctionGroup;
-import com.opengamma.strata.calc.config.pricing.DefaultPricingRules;
-import com.opengamma.strata.calc.config.pricing.FunctionGroup;
-import com.opengamma.strata.calc.config.pricing.PricingRule;
-import com.opengamma.strata.calc.config.pricing.PricingRules;
 import com.opengamma.strata.calc.marketdata.CalculationMarketData;
 import com.opengamma.strata.calc.marketdata.FunctionRequirements;
 import com.opengamma.strata.calc.marketdata.MarketDataFactory;
 import com.opengamma.strata.calc.marketdata.MarketDataRequirements;
 import com.opengamma.strata.calc.marketdata.MarketEnvironment;
 import com.opengamma.strata.calc.marketdata.config.MarketDataConfig;
+import com.opengamma.strata.calc.runner.CalculationFunctions;
+import com.opengamma.strata.calc.runner.CalculationParameters;
 import com.opengamma.strata.calc.runner.CalculationTaskRunner;
 import com.opengamma.strata.calc.runner.CalculationTasks;
-import com.opengamma.strata.calc.runner.Results;
 import com.opengamma.strata.calc.runner.function.CalculationFunction;
 import com.opengamma.strata.calc.runner.function.FunctionUtils;
 import com.opengamma.strata.calc.runner.function.result.CurrencyValuesArray;
@@ -172,11 +169,7 @@ public class CurveEndToEndTest {
             .curveGroup(groupName)
             .build());
 
-    CalculationRules calculationRules = CalculationRules.builder()
-        .pricingRules(pricingRules())
-        .marketDataRules(marketDataRules)
-        .reportingCurrency(ReportingCurrency.of(Currency.USD))
-        .build();
+    CalculationRules calculationRules = CalculationRules.of(functions(), marketDataRules, Currency.USD);
 
     // Calculate the results and check the PVs for the node instruments are zero ----------------------
 
@@ -193,7 +186,7 @@ public class CurveEndToEndTest {
     CalculationTaskRunner runner = CalculationTaskRunner.of(MoreExecutors.newDirectExecutorService());
     Results results = runner.calculateSingleScenario(tasks, enhancedMarketData, REF_DATA);
 
-    results.getItems().stream().forEach(this::checkPvIsZero);
+    results.getCells().stream().forEach(this::checkPvIsZero);
   }
 
   private void checkPvIsZero(Result<?> result) {
@@ -202,21 +195,10 @@ public class CurveEndToEndTest {
   }
 
   //-----------------------------------------------------------------------------------------------------------
-
-  private static PricingRules pricingRules() {
-    FunctionGroup<SwapTrade> swapGroup = DefaultFunctionGroup.builder(SwapTrade.class)
-        .name("Swap")
-        .addFunction(Measures.PRESENT_VALUE, SwapCalculationFunction.class)
-        .build();
-
-    FunctionGroup<FraTrade> fraGroup = DefaultFunctionGroup.builder(FraTrade.class)
-        .name("Fra")
-        .addFunction(Measures.PRESENT_VALUE, TestFraPresentValueFunction.class)
-        .build();
-
-    return DefaultPricingRules.of(
-        PricingRule.builder(FraTrade.class).functionGroup(fraGroup).build(),
-        PricingRule.builder(SwapTrade.class).functionGroup(swapGroup).build());
+  private static CalculationFunctions functions() {
+    return CalculationFunctions.of(ImmutableMap.of(
+        SwapTrade.class, new SwapCalculationFunction(),
+        FraTrade.class, new TestFraPresentValueFunction()));
   }
 
   /**
@@ -242,7 +224,12 @@ public class CurveEndToEndTest {
     }
 
     @Override
-    public FunctionRequirements requirements(FraTrade trade, Set<Measure> measures, ReferenceData refData) {
+    public FunctionRequirements requirements(
+        FraTrade trade,
+        Set<Measure> measures,
+        CalculationParameters parameters,
+        ReferenceData refData) {
+
       Fra fra = trade.getProduct();
 
       Set<Index> indices = new HashSet<>();
@@ -273,6 +260,7 @@ public class CurveEndToEndTest {
     public Map<Measure, Result<?>> calculate(
         FraTrade trade,
         Set<Measure> measures,
+        CalculationParameters parameters,
         CalculationMarketData marketData,
         ReferenceData refData) {
 
