@@ -158,18 +158,23 @@ public final class SimpleDiscountFactors
   @Override
   public double zeroRate(LocalDate date) {
     double yearFraction = Math.max(EFFECTIVE_ZERO, relativeYearFraction(date));
-    double discountFactor = discountFactor(yearFraction);
-    return -Math.log(discountFactor) / yearFraction;
+    return zeroRate(yearFraction);
   }
 
-  // calculates the discount factor at a given time
-  private double discountFactor(double relativeYearFraction) {
+  @Override
+  public double discountFactor(double relativeYearFraction) {
     // read discount factor directly off curve
     return curve.yValue(relativeYearFraction);
   }
 
-  // calculate the relative time between the valuation date and the specified date
-  private double relativeYearFraction(LocalDate date) {
+  @Override
+  public double zeroRate(double yearFraction) {
+    double discountFactor = discountFactor(yearFraction);
+    return -Math.log(discountFactor) / yearFraction;
+  }
+
+  @Override
+  public double relativeYearFraction(LocalDate date) {
     return dayCount.relativeYearFraction(valuationDate, date);
   }
 

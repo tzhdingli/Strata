@@ -5,6 +5,8 @@
  */
 package com.opengamma.strata.pricer.impl.tree;
 
+import java.util.Arrays;
+
 import com.opengamma.strata.collect.array.DoubleArray;
 import com.opengamma.strata.collect.array.DoubleMatrix;
 
@@ -35,21 +37,22 @@ public interface OptionFunction {
    * 
    * @param spot  the spot
    * @param downFactor  the down factor
-   * @param middleFactor  middle factor
-   * @return the payoff at 
+   * @param middleFactor  the middle factor
+   * @param numberOfSteps  
+   * @return the payoff at expiry
    */
   public default DoubleArray getPayoffAtExpiryTrinomial(
       double spot,
       double downFactor,
       double middleFactor,
-      int NumberOfSteps) {
+      int numberOfSteps) {
 
-    int nNodes = 2 * NumberOfSteps + 1;
+    int nNodes = 2 * numberOfSteps + 1;
     double[] values = new double[nNodes];
     for (int i = 0; i < nNodes; ++i) {
-      values[i] = spot * Math.pow(downFactor, NumberOfSteps - i) * Math.pow(middleFactor, i);
+      values[i] = spot * Math.pow(downFactor, numberOfSteps - i) * Math.pow(middleFactor, i);
     }
-    return getPayoffAtExpiryTrinomial(DoubleArray.ofUnsafe(values));
+    return getPayoffAtExpiryTrinomial(DoubleArray.ofUnsafe(values), numberOfSteps);
   }
 
   /**
@@ -58,13 +61,14 @@ public interface OptionFunction {
    * @param stateValue
    * @return
    */
-  public abstract DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue);
+  public abstract DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue, int numberOfSteps);
 
   /**
    * Computes the option values in the intermediate nodes.
    * <p>
    * Given a set of option values in the (i+1)-th layer, option values in the i-th layer are derived.
-   * For an option with path-dependence, this method should be overridden. 
+   * For an option with path-dependence, {@link #getNextOptionValues(double, DoubleMatrix, DoubleArray, DoubleArray, int)} 
+   * should be overridden rather than this method. 
    * <p>
    * The size of {@code values} must be (2*i+3). However, this is not checked because of its repeated usage.
    * 
@@ -75,7 +79,7 @@ public interface OptionFunction {
    * @param values  the option values in the (i+1)-th layer
    * @param spot  the spot
    * @param downFactor  the down factor
-   * @param middleOverDown  middle factor divided by down factor
+   * @param middleFactor  the middle factor
    * @param i  the steps
    * @return the option values in the i-th layer
    */
@@ -87,18 +91,41 @@ public interface OptionFunction {
       DoubleArray values,
       double spot,
       double downFactor,
-      double middleOverDown,
+      double middleFactor,
       int i) {
 
     int nNodes = 2 * i + 1;
-    double[] res = new double[nNodes];
-    for (int j = 0; j < nNodes; ++j) {
-      res[j] = discountFactor *
-          (upProbability * values.get(j + 2) + middleProbability * values.get(j + 1) + downProbability * values.get(j));
-    }
-    return DoubleArray.ofUnsafe(res);
+    //    double[] res = new double[nNodes];
+
+    double[] probsAtNode = new double[] {downProbability, middleProbability, upProbability };
+    double[][] probs = new double[nNodes][];
+    Arrays.fill(probs, probsAtNode);
+    DoubleArray stateValue = DoubleArray.of(nNodes, k -> spot * Math.pow(downFactor, i - k) * Math.pow(middleFactor, k));
+    //    
+    //    for (int j = 0; j < nNodes; ++j) {
+    //      res[j] = discountFactor *
+    //          (upProbability * values.get(j + 2) + middleProbability * values.get(j + 1) + downProbability * values.get(j));
+    //    }
+    //    return DoubleArray.ofUnsafe(res);
+    return getNextOptionValues(discountFactor, DoubleMatrix.ofUnsafe(probs), stateValue, values, i);
   }
 
+  /**
+   * Computes the option values in the intermediate nodes.
+   * <p>
+   * Given a set of option values in the (i+1)-th layer, option values in the i-th layer are derived.
+   * The down, middle and up probabilities of the j-th lowest node are stored in the {i,0}, {i,1}, {i,2} components of  
+   * {@code transitionProbability}, respectively.
+   * <p>
+   * For an option with path-dependence, this method should be overridden. 
+   * 
+   * @param discountFactor  the discount factor between the two layers
+   * @param transitionProbability  the transition probability
+   * @param stateValue  the state value
+   * @param values  the option value
+   * @param i  the steps
+   * @return the option values in the i-th layer
+   */
   public default DoubleArray getNextOptionValues(
       double discountFactor,
       DoubleMatrix transitionProbability,

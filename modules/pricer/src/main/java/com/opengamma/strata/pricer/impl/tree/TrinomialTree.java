@@ -48,7 +48,6 @@ public class TrinomialTree {
     double upProbability = params.get(3);
     double midProbability = params.get(4);
     double downProbability = params.get(5);
-    double middleOverDown = middleFactor / downFactor;
     ArgChecker.isTrue(upProbability > 0d, "upProbability should be greater than 0");
     ArgChecker.isTrue(upProbability < 1d, "upProbability should be smaller than 1");
     ArgChecker.isTrue(midProbability > 0d, "midProbability should be greater than 0");
@@ -57,7 +56,7 @@ public class TrinomialTree {
     DoubleArray values = function.getPayoffAtExpiryTrinomial(spot, downFactor, middleFactor, nSteps);
     for (int i = nSteps - 1; i > -1; --i) {
       values = function.getNextOptionValues(discount, upProbability, midProbability, downProbability, values, spot,
-          downFactor, middleOverDown, i);
+          downFactor, middleFactor, i);
     }
     return values.get(0);
   }
@@ -66,14 +65,14 @@ public class TrinomialTree {
       OptionFunction function,
       RecombiningTrinomialTreeData data) {
 
-    // TODO nStep consistency 
+    // TODO check nStep consistency 
     int nSteps = data.getNumberOfSteps();
-    DoubleArray values = function.getPayoffAtExpiryTrinomial(data.getStateValueAtLayer(nSteps - 1));
+    DoubleArray values = function.getPayoffAtExpiryTrinomial(data.getStateValueAtLayer(nSteps), nSteps);
     for (int i = nSteps - 1; i > -1; --i) {
       values = function.getNextOptionValues(
           data.getDiscountFactorAtLayer(i), data.getProbabilityAtLayer(i), data.getStateValueAtLayer(i), values, i);
     }
-    return 0d;
+    return values.get(0);
   }
 
 }

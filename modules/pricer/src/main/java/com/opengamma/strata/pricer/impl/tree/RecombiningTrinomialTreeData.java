@@ -48,7 +48,7 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
   }
 
   public DoubleArray getStateValueAtLayer(int i) {
-    return stateValue.column(i);
+    return stateValue.row(i);
   }
 
   public DoubleMatrix getProbabilityAtLayer(int i) {

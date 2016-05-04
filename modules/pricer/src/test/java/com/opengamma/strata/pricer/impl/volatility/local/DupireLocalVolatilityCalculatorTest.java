@@ -57,14 +57,20 @@ public class DupireLocalVolatilityCalculatorTest {
     Function<Double, Double> zeroRate = new Function<Double, Double>() {
       @Override
       public Double apply(Double x) {
-        return 0d;
+        return 0.05d;
+      }
+    };
+    Function<Double, Double> zeroRate1 = new Function<Double, Double>() {
+      @Override
+      public Double apply(Double x) {
+        return 0.02d;
       }
     };
     double[] strikes = new double[] {90d, 100d, 115d };
     for (double strike : strikes) {
       for (double time : TEST_TIMES) {
         DeformedSurface localVolSurface =
-            CALC.localVolatilityFromImpliedVolatility(impliedVolSurface, 100d, zeroRate, zeroRate);
+            CALC.localVolatilityFromImpliedVolatility(impliedVolSurface, 100d, zeroRate, zeroRate1);
         assertEquals(localVolSurface.zValue(time, strike), constantVol);
       }
     }

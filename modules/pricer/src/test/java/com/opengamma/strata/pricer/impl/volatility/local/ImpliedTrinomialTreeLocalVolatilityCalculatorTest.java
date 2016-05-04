@@ -68,19 +68,25 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculatorTest {
   private static final double SPOT = 1.40;
 
   public void flatVolTest() {
-    double tol = 5.0e-5;
+    double tol = 2.0e-4;
     double constantVol = 0.15;
     ConstantNodalSurface impliedVolSurface = ConstantNodalSurface.of("impliedVol", constantVol);
     Function<Double, Double> zeroRate = new Function<Double, Double>() {
       @Override
       public Double apply(Double x) {
-        return 0d;
+        return 0.05d;
       }
     };
-    ImpliedTrinomialTreeLocalVolatilityCalculator calc = new ImpliedTrinomialTreeLocalVolatilityCalculator(10, 1d,
+    Function<Double, Double> zeroRate1 = new Function<Double, Double>() {
+      @Override
+      public Double apply(Double x) {
+        return 0.02d;
+      }
+    };
+    ImpliedTrinomialTreeLocalVolatilityCalculator calc = new ImpliedTrinomialTreeLocalVolatilityCalculator(15, 1d,
         new GridInterpolator2D(TIMESQ_FLAT, LINEAR_FLAT));
     InterpolatedNodalSurface localVolSurface =
-        calc.localVolatilityFromImpliedVolatility(impliedVolSurface, 100d, zeroRate, zeroRate);
+        calc.localVolatilityFromImpliedVolatility(impliedVolSurface, 100d, zeroRate, zeroRate1);
     assertEquals(localVolSurface.getZValues().stream().filter(d -> !DoubleMath.fuzzyEquals(d, constantVol, tol)).count(), 0);
   }
 
