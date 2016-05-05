@@ -56,7 +56,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
       SimpleConstantContinuousBarrier.of(BarrierType.UP, KnockType.KNOCK_IN, LEVEL_HIGH);
   private static final SimpleConstantContinuousBarrier BARRIER_UKO =
       SimpleConstantContinuousBarrier.of(BarrierType.UP, KnockType.KNOCK_OUT, LEVEL_HIGH);
-  private static final double REBATE_AMOUNT = 50_000d;
+  private static final double REBATE_AMOUNT = 5_000_000d; // large rebate for testing
   private static final CurrencyAmount REBATE = CurrencyAmount.of(USD, REBATE_AMOUNT);
   private static final CurrencyAmount REBATE_BASE = CurrencyAmount.of(EUR, REBATE_AMOUNT);
   private static final double STRIKE_RATE_HIGH = 1.45;
@@ -74,6 +74,21 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
       ResolvedFxSingleBarrierOption.of(CALL, BARRIER_DKO);
   private static final ResolvedFxSingleBarrierOption CALL_UKO =
       ResolvedFxSingleBarrierOption.of(CALL, BARRIER_UKO);
+
+  private static final ResolvedFxSingleBarrierOption CALL_DKI =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_DKI);
+  private static final ResolvedFxSingleBarrierOption CALL_UKI =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_UKI);
+
+  private static final ResolvedFxSingleBarrierOption CALL_DKO_C =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_DKO, REBATE);
+  private static final ResolvedFxSingleBarrierOption CALL_UKO_B =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_UKO, REBATE_BASE);
+
+  private static final ResolvedFxSingleBarrierOption CALL_DKI_B =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_DKI, REBATE_BASE);
+  private static final ResolvedFxSingleBarrierOption CALL_UKI_C =
+      ResolvedFxSingleBarrierOption.of(CALL, BARRIER_UKI, REBATE);
 
   private static final CurrencyAmount EUR_AMOUNT_PAY = CurrencyAmount.of(EUR, -NOTIONAL);
   private static final CurrencyAmount USD_AMOUNT_REC = CurrencyAmount.of(USD, NOTIONAL * STRIKE_RATE_HIGH);
@@ -93,12 +108,45 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
   private static final BlackFxSingleBarrierOptionProductPricer BLACK_PRICER = BlackFxSingleBarrierOptionProductPricer.DEFAULT;
 
   @Test(enabled = false)
-  public void test() {
+  public void test_change_numNodes() {
     double priceBlack = BLACK_PRICER.price(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
     for (int i = 4; i < 150; i += 5) {
       ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
           new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(i);
       double price = pricer.price(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      System.out.println(i + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_numNodes_in() {
+    double priceBlack = BLACK_PRICER.price(CALL_UKI, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 4; i < 150; i += 5) {
+      ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
+          new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(i);
+      double price = pricer.price(CALL_UKI, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      System.out.println(i + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_numNodes_rebate() {
+    double priceBlack = BLACK_PRICER.price(CALL_UKO_B, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 4; i < 150; i += 5) {
+      ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
+          new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(i);
+      double price = pricer.price(CALL_UKO_B, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      System.out.println(i + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_numNodes_in_rebate() {
+    double priceBlack = BLACK_PRICER.price(CALL_DKI_B, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 4; i < 150; i += 5) {
+      ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
+          new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(i);
+      double price = pricer.price(CALL_DKI_B, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
       System.out.println(i + "\t" + price + "\t" + priceBlack);
     }
   }
@@ -123,7 +171,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
   }
 
   @Test(enabled = false)
-  public void test2() {
+  public void test_change_barrier() {
     RecombiningTrinomialTreeData data = PRICER.calibrateTrinomialTree(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
     for (int i = 0; i < 50; ++i) {
       //      double barrier = 1.1 + 0.006 * i;
@@ -141,7 +189,67 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
   }
 
   @Test(enabled = false)
-  public void test3() {
+  public void test_change_barrier_in() {
+    RecombiningTrinomialTreeData data = PRICER.calibrateTrinomialTree(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 0; i < 50; ++i) {
+      double barrier = 1.1 + 0.006 * i;
+      SimpleConstantContinuousBarrier dki =
+          SimpleConstantContinuousBarrier.of(BarrierType.DOWN, KnockType.KNOCK_IN, barrier);
+      ResolvedFxSingleBarrierOption option =
+          ResolvedFxSingleBarrierOption.of(CALL, dki);
+      //      double barrier = 1.4 + 0.006 * (i + 1);
+      //      SimpleConstantContinuousBarrier uki =
+      //          SimpleConstantContinuousBarrier.of(BarrierType.UP, KnockType.KNOCK_IN, barrier);
+      //      ResolvedFxSingleBarrierOption option =
+      //          ResolvedFxSingleBarrierOption.of(CALL, uki);
+      double priceBlack = BLACK_PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      double price = PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT, data);
+      System.out.println(barrier + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_barrier_rebate() {
+    RecombiningTrinomialTreeData data = PRICER.calibrateTrinomialTree(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 0; i < 50; ++i) {
+      //      double barrier = 1.1 + 0.006 * i;
+      //      SimpleConstantContinuousBarrier dko =
+      //          SimpleConstantContinuousBarrier.of(BarrierType.DOWN, KnockType.KNOCK_OUT, barrier);
+      //      ResolvedFxSingleBarrierOption option =
+      //          ResolvedFxSingleBarrierOption.of(CALL, dko, REBATE);
+      double barrier = 1.4 + 0.006 * (i + 1);
+      SimpleConstantContinuousBarrier uko =
+          SimpleConstantContinuousBarrier.of(BarrierType.UP, KnockType.KNOCK_OUT, barrier);
+      ResolvedFxSingleBarrierOption option =
+          ResolvedFxSingleBarrierOption.of(CALL, uko, REBATE_BASE);
+      double priceBlack = BLACK_PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      double price = PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT, data);
+      System.out.println(barrier + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_barrier_in_rebate() {
+    RecombiningTrinomialTreeData data = PRICER.calibrateTrinomialTree(CALL_DKO, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+    for (int i = 0; i < 50; ++i) {
+      //      double barrier = 1.1 + 0.006 * i;
+      //      SimpleConstantContinuousBarrier dki =
+      //          SimpleConstantContinuousBarrier.of(BarrierType.DOWN, KnockType.KNOCK_IN, barrier);
+      //      ResolvedFxSingleBarrierOption option =
+      //          ResolvedFxSingleBarrierOption.of(CALL, dki, REBATE);
+      double barrier = 1.4 + 0.006 * (i + 1);
+      SimpleConstantContinuousBarrier uki =
+          SimpleConstantContinuousBarrier.of(BarrierType.UP, KnockType.KNOCK_IN, barrier);
+      ResolvedFxSingleBarrierOption option =
+          ResolvedFxSingleBarrierOption.of(CALL, uki, REBATE_BASE);
+      double priceBlack = BLACK_PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT);
+      double price = PRICER.price(option, RATE_PROVIDER_FLAT, VOL_PROVIDER_FLAT, data);
+      System.out.println(barrier + "\t" + price + "\t" + priceBlack);
+    }
+  }
+
+  @Test(enabled = false)
+  public void test_change_barrier_uniform() {
     double vol = 0.18;
     double rate = 0.011;
     double div = 0.015;

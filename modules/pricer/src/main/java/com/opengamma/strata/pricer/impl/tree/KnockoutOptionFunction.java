@@ -5,7 +5,6 @@ import java.util.Arrays;
 import com.opengamma.strata.collect.ArgChecker;
 import com.opengamma.strata.collect.array.DoubleArray;
 import com.opengamma.strata.collect.array.DoubleMatrix;
-import com.opengamma.strata.math.impl.interpolation.WeightingFunction;
 import com.opengamma.strata.product.fx.BarrierType;
 
 abstract class KnockoutOptionFunction implements OptionFunction {
@@ -36,19 +35,20 @@ abstract class KnockoutOptionFunction implements OptionFunction {
     for (int i = iMin; i < iMmax; ++i) {
       values[i] = Math.max(getSign() * (stateValue.get(i) - getStrike()), 0d);
     }
-    if (getBarrierType().equals(BarrierType.UP) && barrierLevel == stateValue.get(index)) {
-      values[index] = rebate;
+    //    if (getBarrierType().equals(BarrierType.UP) && barrierLevel == stateValue.get(index)) {
+    //      values[index] = rebate;
+    //    }
+    double bd = barrierLevel - stateValue.get(index);
+    double ub = stateValue.get(index + 1) - barrierLevel;
+    double ud = stateValue.get(index + 1) - stateValue.get(index);
+    if (getBarrierType().equals(BarrierType.UP)) { // TODO combine two cases
+      values[index] = barrierLevel == stateValue.get(index) ? rebate: 
+          0.5 * values[index] + 0.5 * (ub / ud * rebate + bd / ud * values[index]);
     }
-    //    WeightingFunction func = WeightingFunction.of("Linear");
-    //    double bd = barrierLevel - stateValue.get(index);
-    //    double ub = stateValue.get(index + 1) - barrierLevel;
-    //    double ud = stateValue.get(index + 1) - stateValue.get(index);
-    //    if (getBarrierType().equals(BarrierType.UP)) {
-    //      values[index] = (ub * rebate + bd * values[index]) / ud;
-    //    }
-    //    if (getBarrierType().equals(BarrierType.DOWN)) {
-    //      values[index + 1] = func.getWeight(bd / ud) * rebate + func.getWeight(ub / ud) * values[index + 1];
-    //    }
+    if (getBarrierType().equals(BarrierType.DOWN)) { // TODO use isDown
+      values[index + 1] = 0.5 * values[index + 1] + 0.5 *
+          (bd / ud * rebate + ub / ud * values[index + 1]);
+    }
     return DoubleArray.ofUnsafe(values);
   }
 
@@ -59,8 +59,6 @@ abstract class KnockoutOptionFunction implements OptionFunction {
       DoubleArray stateValue,
       DoubleArray values,
       int i) {
-
-    WeightingFunction func = WeightingFunction.of("Linear");
 
     int nNodes = 2 * i + 1;
     double[] res = new double[nNodes];
@@ -78,18 +76,19 @@ abstract class KnockoutOptionFunction implements OptionFunction {
             (upProb * values.get(j + 2) + middleProb * values.get(j + 1) + downProb * values.get(j));
       }
     }
-    //    int index = getLowerBoundIndex(stateValue, barrierLevel);
-    //    if (index > -1 && index < nNodes - 1) {
-    //      double bd = barrierLevel - stateValue.get(index);
-    //      double ub = stateValue.get(index + 1) - barrierLevel;
-    //      double ud = stateValue.get(index + 1) - stateValue.get(index);
-    //      if (getBarrierType().equals(BarrierType.UP)) {
-    //        res[index] = func.getWeight(ub / ud) * rebate + func.getWeight(bd / ud) * res[index];
-    //      }
-    //      if (getBarrierType().equals(BarrierType.DOWN)) {
-    //        res[index + 1] = func.getWeight(bd / ud) * rebate + func.getWeight(ub / ud) * res[index + 1];
-    //      }
-    //    }
+    int index = getLowerBoundIndex(stateValue, barrierLevel);
+    if (index > -1 && index < nNodes - 1) {
+      double bd = barrierLevel - stateValue.get(index);
+      double ub = stateValue.get(index + 1) - barrierLevel;
+      double ud = stateValue.get(index + 1) - stateValue.get(index);
+      if (getBarrierType().equals(BarrierType.UP)) { // TODO combine two cases
+        res[index] = 0.5 * res[index] + 0.5 * (ub / ud * rebate + bd / ud * res[index]);
+      }
+      if (getBarrierType().equals(BarrierType.DOWN)) { // TODO use isDown
+        res[index + 1] = 0.5 * res[index + 1] + 0.5 *
+            (bd / ud * rebate + ub / ud * res[index + 1]);
+      }
+    }
     return DoubleArray.ofUnsafe(res);
   }
 
