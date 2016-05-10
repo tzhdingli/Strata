@@ -49,6 +49,11 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
   private static final TrinomialTree TREE = new TrinomialTree();
   
   /**
+   * Lattice specification.
+   */
+  private static final LatticeSpecification CRR = new CoxRossRubinsteinLatticeSpecification();
+
+  /**
    * Default interpolator and extrapolator for strike dimension. 
    */
   private static final Interpolator1D LINEAR_FLAT = CombinedInterpolatorExtrapolator.of(
@@ -83,6 +88,12 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
     this(20, 3d, new GridInterpolator2D(TIMESQ_FLAT, LINEAR_FLAT));
   }
 
+  /**
+   * Creates an instance with the number of steps and maximum time fixed.
+   * 
+   * @param nSteps  the number of steps
+   * @param maxTime  the maximum time
+   */
   public ImpliedTrinomialTreeLocalVolatilityCalculator(int nSteps, double maxTime) {
     this(nSteps, maxTime, new GridInterpolator2D(TIMESQ_FLAT, LINEAR_FLAT));
   }
@@ -226,6 +237,7 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
 
     double[][] stateValue = new double[nSteps + 1][];
     double[] df = new double[nSteps];
+    double[] timePrim = new double[nSteps + 1];
     List<DoubleMatrix> probability = new ArrayList<DoubleMatrix>(nSteps);
     int nTotal = (nSteps - 1) * (nSteps - 1) + 1;
     double[] timeRes = new double[nTotal];
@@ -240,40 +252,39 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
     double[] adSec = new double[2 * nSteps + 1];
     double[] assetPrice = new double[2 * nSteps + 1];
     for (int i = nSteps; i > -1; --i) {
+      timePrim[i] = dt * i;
       if (i == 0) {
         resolveFirstLayer(interestRate, dividendRate, nTotal, dt, spot, adSec, assetPrice, timeRes, spotRes, volRes,
             df, stateValue, probability);
       } else {
-        double time = dt * i;
-        double zeroRate = interestRate.apply(time);
-        double zeroDividendRate = dividendRate.apply(time);
+        double zeroRate = interestRate.apply(timePrim[i]);
+        double zeroDividendRate = dividendRate.apply(timePrim[i]);
         double zeroCostRate = zeroRate - zeroDividendRate;
         int nNodes = 2 * i + 1;
         double[] assetPriceLocal = new double[nNodes];
         double[] callOptionPrice = new double[nNodes];
         double[] putOptionPrice = new double[nNodes];
         int position = i - 1;
-        LatticeSpecification crr = CoxRossRubinsteinLatticeSpecification.of(i);
         double assetTmp = spot * Math.pow(upFactor, i);
         // call options for upper half nodes
         for (int j = nNodes - 1; j > position - 1; --j) {
           assetPriceLocal[j] = assetTmp;
-          double impliedVol = impliedVolatilitySurface.apply(DoublesPair.of(time, assetPriceLocal[j]));
-          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.CALL);
-          double price = TREE.optionPrice(crr, call, spot, impliedVol, zeroRate, zeroDividendRate);
+          double impliedVol = impliedVolatilitySurface.apply(DoublesPair.of(timePrim[i], assetPriceLocal[j]));
+          OptionFunction call = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], timePrim[i], PutCall.CALL, i);
+          double price = TREE.optionPrice(CRR, call, spot, impliedVol, zeroRate, zeroDividendRate);
           callOptionPrice[j] = price > 0d ? price : BlackScholesFormulaRepository.price(
-              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, true);
+              spot, assetPriceLocal[j], timePrim[i], impliedVol, zeroRate, zeroCostRate, true);
           assetTmp *= downFactor;
         }
         // put options for lower half nodes
         assetTmp = spot * Math.pow(downFactor, i);
         for (int j = 0; j < position + 2; ++j) {
           assetPriceLocal[j] = assetTmp;
-          double impliedVol = impliedVolatilitySurface.apply(DoublesPair.of(time, assetPriceLocal[j]));
-          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], time, PutCall.PUT);
-          double price = TREE.optionPrice(crr, put, spot, impliedVol, zeroRate, zeroDividendRate);
+          double impliedVol = impliedVolatilitySurface.apply(DoublesPair.of(timePrim[i], assetPriceLocal[j]));
+          OptionFunction put = EuropeanVanillaOptionFunction.of(assetPriceLocal[j], timePrim[i], PutCall.PUT, i);
+          double price = TREE.optionPrice(CRR, put, spot, impliedVol, zeroRate, zeroDividendRate);
           putOptionPrice[j] = price >= 0d ? price : BlackScholesFormulaRepository.price(
-              spot, assetPriceLocal[j], time, impliedVol, zeroRate, zeroCostRate, false);
+              spot, assetPriceLocal[j], timePrim[i], impliedVol, zeroRate, zeroCostRate, false);
           assetTmp *= upFactor;
         }
         resolveLayer(interestRate, dividendRate, i, nTotal, position, dt, zeroRate, zeroDividendRate, callOptionPrice,
@@ -281,8 +292,8 @@ public class ImpliedTrinomialTreeLocalVolatilityCalculator implements LocalVolat
       }
     }
     ImmutableList<double[]> localVolData = ImmutableList.of(timeRes, spotRes, volRes);
-    RecombiningTrinomialTreeData treeData =
-        RecombiningTrinomialTreeData.of(DoubleMatrix.ofUnsafe(stateValue), probability, DoubleArray.ofUnsafe(df));
+    RecombiningTrinomialTreeData treeData = RecombiningTrinomialTreeData.of(
+        DoubleMatrix.ofUnsafe(stateValue), probability, DoubleArray.ofUnsafe(df), DoubleArray.ofUnsafe(timePrim));
     return Pair.of(localVolData, treeData);
   }
 

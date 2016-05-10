@@ -1,3 +1,8 @@
+/**
+ * Copyright (C) 2016 - present by OpenGamma Inc. and the OpenGamma group of companies
+ * 
+ * Please see distribution for license.
+ */
 package com.opengamma.strata.pricer.impl.tree;
 
 import java.io.Serializable;
@@ -20,47 +25,140 @@ import org.joda.beans.impl.direct.DirectMetaProperty;
 import org.joda.beans.impl.direct.DirectMetaPropertyMap;
 
 import com.google.common.collect.ImmutableList;
+import com.opengamma.strata.collect.ArgChecker;
 import com.opengamma.strata.collect.array.DoubleArray;
 import com.opengamma.strata.collect.array.DoubleMatrix;
 
+/**
+ * Recombining trinomial tree data. 
+ * <p>
+ * This involves state values and transition probabilities for all of the nodes, as well as discount factors and 
+ * time (time from valuation date) for individual time steps.
+ */
 @BeanDefinition(builderScope = "private")
 public final class RecombiningTrinomialTreeData implements ImmutableBean, Serializable {
 
+  /**
+   * The state value. 
+   * <p>
+   * The {@code (i,j)} component of this matrix represents the underlying asset price at the {@code j}-th lowest node 
+   * at the {@code i}-th time layer. 
+   */
   @PropertyDefinition
   private final DoubleMatrix stateValue;
-
+  /**
+   * The transition probability. 
+   * <p>
+   * The {@code i}-th element of the list represents the transition probability values for the nodes 
+   * at the {@code i}-th time layer. 
+   * The matrix is {@code (2*i+1)} times {@code 3}, and its {@code j}-th row involves [0] down probability, 
+   * [1] middle probability and [2] up probability for the {@code j}-th lowest node. 
+   */
   @PropertyDefinition
   private final ImmutableList<DoubleMatrix> transitionProbability;
-
+  /**
+   * The discount factor. 
+   * <p>
+   * The {@code i}-th element is the discount factor between the {@code i}-th layer and the {@code (i+1)}-th layer. 
+   */
   @PropertyDefinition
   private final DoubleArray discountFactor;
+  /**
+   * The time.
+   * <p>
+   * The {@code i}-th element is the year fraction between the {@code 0}-th time layer and the {@code j}-th layer.   
+   */
+  @PropertyDefinition
+  private final DoubleArray time;
 
+  //-------------------------------------------------------------------------
+  /**
+   * Creates an instance.
+   * 
+   * @param stateValue  the state value
+   * @param transitionProbability  the transition probability
+   * @param discountFactor  the discount factor
+   * @param time  the time
+   * @return the instance
+   */
   public static RecombiningTrinomialTreeData of(
       DoubleMatrix stateValue,
       List<DoubleMatrix> transitionProbability,
-      DoubleArray discountFactor) {
-    // TODO check size of list, matrix
-    return new RecombiningTrinomialTreeData(stateValue, transitionProbability, discountFactor);
+      DoubleArray discountFactor,
+      DoubleArray time) {
+
+    int nSteps = discountFactor.size();
+    ArgChecker.isTrue(stateValue.rowCount() == nSteps + 1, "");
+    ArgChecker.isTrue(transitionProbability.size() == nSteps, "");
+    ArgChecker.isTrue(time.size() == nSteps + 1, "");
+    for (int i = 0; i < nSteps; ++i) {
+      ArgChecker.isTrue(stateValue.row(i).size() == 2 * i + 1);
+      ArgChecker.isTrue(transitionProbability.get(i).rowCount() == 2 * i + 1);
+      ArgChecker.isTrue(transitionProbability.get(i).columnCount() == 3);
+    }
+    ArgChecker.isTrue(stateValue.row(nSteps).size() == 2 * nSteps + 1);
+    return new RecombiningTrinomialTreeData(stateValue, transitionProbability, discountFactor, time);
   }
 
+  //-------------------------------------------------------------------------
+  /**
+   * Obtains the number of time steps. 
+   * 
+   * @return the number of time steps
+   */
   public int getNumberOfSteps() {
     return transitionProbability.size();
   }
 
+  /**
+   * Obtains the state values at the {@code i}-th time layer
+   * 
+   * @param i  the layer
+   * @return the state values
+   */
   public DoubleArray getStateValueAtLayer(int i) {
     return stateValue.row(i);
   }
 
+  /**
+   * Obtains the transition probability values at the {@code i}-th time layer
+   * 
+   * @param i  the layer
+   * @return the transition probability
+   */
   public DoubleMatrix getProbabilityAtLayer(int i) {
     return transitionProbability.get(i);
   }
 
+  /**
+   * Obtains discount factor between the {@code i}-th layer to the {@code (i+1)}-th layer.
+   * 
+   * @param i  the layer
+   * @return the discount factor
+   */
   public double getDiscountFactorAtLayer(int i) {
     return discountFactor.get(i);
   }
 
+  /**
+   * Obtains the spot. 
+   * 
+   * @return the spot
+   */
   public double getSpot() {
     return stateValue.get(0, 0);
+  }
+
+  /**
+   * Obtains the time for the {@code i}-th layer. 
+   * <p>
+   * The time is the year fraction between the {@code 0}-th layer and the {@code i}-th layer.
+   * 
+   * @param i  the layer
+   * @return the time
+   */
+  public double getTime(int i) {
+    return time.get(i);
   }
 
   //------------------------- AUTOGENERATED START -------------------------
@@ -85,10 +183,12 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
   private RecombiningTrinomialTreeData(
       DoubleMatrix stateValue,
       List<DoubleMatrix> transitionProbability,
-      DoubleArray discountFactor) {
+      DoubleArray discountFactor,
+      DoubleArray time) {
     this.stateValue = stateValue;
     this.transitionProbability = (transitionProbability != null ? ImmutableList.copyOf(transitionProbability) : null);
     this.discountFactor = discountFactor;
+    this.time = time;
   }
 
   @Override
@@ -108,7 +208,10 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
 
   //-----------------------------------------------------------------------
   /**
-   * Gets the stateValue.
+   * Gets the state value.
+   * <p>
+   * The {@code (i,j)} component of this matrix represents the underlying asset price at the {@code j}-th lowest node
+   * at the {@code i}-th time layer.
    * @return the value of the property
    */
   public DoubleMatrix getStateValue() {
@@ -117,7 +220,12 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
 
   //-----------------------------------------------------------------------
   /**
-   * Gets the transitionProbability.
+   * Gets the transition probability.
+   * <p>
+   * The {@code i}-th element of the list represents the transition probability values for the nodes
+   * at the {@code i}-th time layer.
+   * The matrix is {@code (2*i+1)} times {@code 3}, and its {@code j}-th row involves [0] down probability,
+   * [1] middle probability and [2] up probability for the {@code j}-th lowest node.
    * @return the value of the property
    */
   public ImmutableList<DoubleMatrix> getTransitionProbability() {
@@ -126,11 +234,24 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
 
   //-----------------------------------------------------------------------
   /**
-   * Gets the discountFactor.
+   * Gets the discount factor.
+   * <p>
+   * The {@code i}-th element is the discount factor between the {@code i}-th layer and the {@code (i+1)}-th layer.
    * @return the value of the property
    */
   public DoubleArray getDiscountFactor() {
     return discountFactor;
+  }
+
+  //-----------------------------------------------------------------------
+  /**
+   * Gets the time.
+   * <p>
+   * The {@code i}-th element is the year fraction between the {@code 0}-th time layer and the {@code j}-th layer.
+   * @return the value of the property
+   */
+  public DoubleArray getTime() {
+    return time;
   }
 
   //-----------------------------------------------------------------------
@@ -143,7 +264,8 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
       RecombiningTrinomialTreeData other = (RecombiningTrinomialTreeData) obj;
       return JodaBeanUtils.equal(stateValue, other.stateValue) &&
           JodaBeanUtils.equal(transitionProbability, other.transitionProbability) &&
-          JodaBeanUtils.equal(discountFactor, other.discountFactor);
+          JodaBeanUtils.equal(discountFactor, other.discountFactor) &&
+          JodaBeanUtils.equal(time, other.time);
     }
     return false;
   }
@@ -154,16 +276,18 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
     hash = hash * 31 + JodaBeanUtils.hashCode(stateValue);
     hash = hash * 31 + JodaBeanUtils.hashCode(transitionProbability);
     hash = hash * 31 + JodaBeanUtils.hashCode(discountFactor);
+    hash = hash * 31 + JodaBeanUtils.hashCode(time);
     return hash;
   }
 
   @Override
   public String toString() {
-    StringBuilder buf = new StringBuilder(128);
+    StringBuilder buf = new StringBuilder(160);
     buf.append("RecombiningTrinomialTreeData{");
     buf.append("stateValue").append('=').append(stateValue).append(',').append(' ');
     buf.append("transitionProbability").append('=').append(transitionProbability).append(',').append(' ');
-    buf.append("discountFactor").append('=').append(JodaBeanUtils.toString(discountFactor));
+    buf.append("discountFactor").append('=').append(discountFactor).append(',').append(' ');
+    buf.append("time").append('=').append(JodaBeanUtils.toString(time));
     buf.append('}');
     return buf.toString();
   }
@@ -195,13 +319,19 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
     private final MetaProperty<DoubleArray> discountFactor = DirectMetaProperty.ofImmutable(
         this, "discountFactor", RecombiningTrinomialTreeData.class, DoubleArray.class);
     /**
+     * The meta-property for the {@code time} property.
+     */
+    private final MetaProperty<DoubleArray> time = DirectMetaProperty.ofImmutable(
+        this, "time", RecombiningTrinomialTreeData.class, DoubleArray.class);
+    /**
      * The meta-properties.
      */
     private final Map<String, MetaProperty<?>> metaPropertyMap$ = new DirectMetaPropertyMap(
         this, null,
         "stateValue",
         "transitionProbability",
-        "discountFactor");
+        "discountFactor",
+        "time");
 
     /**
      * Restricted constructor.
@@ -218,6 +348,8 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
           return transitionProbability;
         case -557144592:  // discountFactor
           return discountFactor;
+        case 3560141:  // time
+          return time;
       }
       return super.metaPropertyGet(propertyName);
     }
@@ -262,6 +394,14 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
       return discountFactor;
     }
 
+    /**
+     * The meta-property for the {@code time} property.
+     * @return the meta-property, not null
+     */
+    public MetaProperty<DoubleArray> time() {
+      return time;
+    }
+
     //-----------------------------------------------------------------------
     @Override
     protected Object propertyGet(Bean bean, String propertyName, boolean quiet) {
@@ -272,6 +412,8 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
           return ((RecombiningTrinomialTreeData) bean).getTransitionProbability();
         case -557144592:  // discountFactor
           return ((RecombiningTrinomialTreeData) bean).getDiscountFactor();
+        case 3560141:  // time
+          return ((RecombiningTrinomialTreeData) bean).getTime();
       }
       return super.propertyGet(bean, propertyName, quiet);
     }
@@ -296,6 +438,7 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
     private DoubleMatrix stateValue;
     private List<DoubleMatrix> transitionProbability;
     private DoubleArray discountFactor;
+    private DoubleArray time;
 
     /**
      * Restricted constructor.
@@ -313,6 +456,8 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
           return transitionProbability;
         case -557144592:  // discountFactor
           return discountFactor;
+        case 3560141:  // time
+          return time;
         default:
           throw new NoSuchElementException("Unknown property: " + propertyName);
       }
@@ -330,6 +475,9 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
           break;
         case -557144592:  // discountFactor
           this.discountFactor = (DoubleArray) newValue;
+          break;
+        case 3560141:  // time
+          this.time = (DoubleArray) newValue;
           break;
         default:
           throw new NoSuchElementException("Unknown property: " + propertyName);
@@ -366,17 +514,19 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
       return new RecombiningTrinomialTreeData(
           stateValue,
           transitionProbability,
-          discountFactor);
+          discountFactor,
+          time);
     }
 
     //-----------------------------------------------------------------------
     @Override
     public String toString() {
-      StringBuilder buf = new StringBuilder(128);
+      StringBuilder buf = new StringBuilder(160);
       buf.append("RecombiningTrinomialTreeData.Builder{");
       buf.append("stateValue").append('=').append(JodaBeanUtils.toString(stateValue)).append(',').append(' ');
       buf.append("transitionProbability").append('=').append(JodaBeanUtils.toString(transitionProbability)).append(',').append(' ');
-      buf.append("discountFactor").append('=').append(JodaBeanUtils.toString(discountFactor));
+      buf.append("discountFactor").append('=').append(JodaBeanUtils.toString(discountFactor)).append(',').append(' ');
+      buf.append("time").append('=').append(JodaBeanUtils.toString(time));
       buf.append('}');
       return buf.toString();
     }

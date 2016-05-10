@@ -140,11 +140,10 @@ public interface DiscountFactors
     return zeroRate(yearFraction);
   }
 
-  //TODO coverage test
   /**
    * Gets the continuously compounded zero rate for specified year fraction.
    * <p>
-   * The year must be based on {@code #relativeYearFraction(LocalDate)}.
+   * The year fraction must be based on {@code #relativeYearFraction(LocalDate)}.
    * 
    * @param yearFraction  the year fraction 
    * @return the zero rate
@@ -155,7 +154,7 @@ public interface DiscountFactors
   /**
    * Gets the discount factor for specified year fraction.
    * <p>
-   * The year must be based on {@code #relativeYearFraction(LocalDate)}.
+   * The year fraction must be based on {@code #relativeYearFraction(LocalDate)}.
    * 
    * @param yearFraction  the year fraction 
    * @return the discount factor

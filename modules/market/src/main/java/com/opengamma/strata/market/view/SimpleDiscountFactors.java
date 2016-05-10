@@ -157,8 +157,7 @@ public final class SimpleDiscountFactors
 
   @Override
   public double zeroRate(LocalDate date) {
-    double yearFraction = Math.max(EFFECTIVE_ZERO, relativeYearFraction(date));
-    return zeroRate(yearFraction);
+    return zeroRate(relativeYearFraction(date));
   }
 
   @Override
@@ -169,8 +168,9 @@ public final class SimpleDiscountFactors
 
   @Override
   public double zeroRate(double yearFraction) {
-    double discountFactor = discountFactor(yearFraction);
-    return -Math.log(discountFactor) / yearFraction;
+    double yearFractionMod = Math.max(EFFECTIVE_ZERO, yearFraction);
+    double discountFactor = discountFactor(yearFractionMod);
+    return -Math.log(discountFactor) / yearFractionMod;
   }
 
   @Override

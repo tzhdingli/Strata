@@ -1,3 +1,8 @@
+/**
+ * Copyright (C) 2016 - present by OpenGamma Inc. and the OpenGamma group of companies
+ * 
+ * Please see distribution for license.
+ */
 package com.opengamma.strata.pricer.impl.tree;
 
 import java.util.Arrays;
@@ -7,47 +12,67 @@ import com.opengamma.strata.collect.array.DoubleArray;
 import com.opengamma.strata.collect.array.DoubleMatrix;
 import com.opengamma.strata.product.fx.BarrierType;
 
-abstract class KnockoutOptionFunction implements OptionFunction {
+/**
+ * Single barrier knock-out option function.
+ */
+abstract class SingleBarrierKnockoutFunction implements OptionFunction {
 
+  /**
+   * Obtains the barrier level for the time layer specified by {@code step}.
+   * 
+   * @param step  the step
+   * @return the barrier level
+   */
   public abstract double getBarrierLevel(int step);
 
+  /**
+   * Obtains the sign.  
+   * <p>
+   * The sign is +1 for call and -1 for put.
+   * 
+   * @return the sign
+   */
   public abstract double getSign();
 
-  public abstract double getStrike();
-
-  public abstract double getTimeToExpiry();
-
+  /**
+   * Obtains the barrier type. 
+   * 
+   * @return the barrier type
+   */
   public abstract BarrierType getBarrierType();
 
+  /**
+   * Obtains the rebate for the time layer specified by {@code step}.
+   * 
+   * @param step  the step
+   * @return the rebate
+   */
   public abstract double getRebate(int step);
 
   @Override
-  public DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue, int numberOfSteps) {
+  public DoubleArray getPayoffAtExpiryTrinomial(DoubleArray stateValue) {
+
     int nNodes = stateValue.size();
     double[] values = new double[nNodes];
-    double rebate = getRebate(numberOfSteps);
-    double barrierLevel = getBarrierLevel(numberOfSteps);
+    double rebate = getRebate(getNumberOfSteps());
+    double barrierLevel = getBarrierLevel(getNumberOfSteps());
+    boolean isDown = getBarrierType().isDown();
     Arrays.fill(values, rebate);
     int index = getLowerBoundIndex(stateValue, barrierLevel);
     ArgChecker.isTrue(index > -1 && index < nNodes - 1, "barrier is covered by tree");
-    int iMin = getBarrierType().equals(BarrierType.DOWN) ? index + 1 : 0;
-    int iMmax = getBarrierType().equals(BarrierType.UP) ? index + 1 : nNodes;
+    int iMin = isDown ? index + 1 : 0;
+    int iMmax = !isDown ? index + 1 : nNodes;
     for (int i = iMin; i < iMmax; ++i) {
       values[i] = Math.max(getSign() * (stateValue.get(i) - getStrike()), 0d);
     }
-    //    if (getBarrierType().equals(BarrierType.UP) && barrierLevel == stateValue.get(index)) {
-    //      values[index] = rebate;
-    //    }
     double bd = barrierLevel - stateValue.get(index);
     double ub = stateValue.get(index + 1) - barrierLevel;
     double ud = stateValue.get(index + 1) - stateValue.get(index);
-    if (getBarrierType().equals(BarrierType.UP)) { // TODO combine two cases
-      values[index] = barrierLevel == stateValue.get(index) ? rebate: 
-          0.5 * values[index] + 0.5 * (ub / ud * rebate + bd / ud * values[index]);
-    }
-    if (getBarrierType().equals(BarrierType.DOWN)) { // TODO use isDown
-      values[index + 1] = 0.5 * values[index + 1] + 0.5 *
-          (bd / ud * rebate + ub / ud * values[index + 1]);
+    if (isDown) {
+      values[index + 1] = 0.5 * values[index + 1] + 0.5 * (bd * rebate + ub * values[index + 1]) / ud;
+    } else {
+      values[index] = barrierLevel == stateValue.get(index) ? rebate :
+          0.5 * values[index] + 0.5 * (ub * rebate + bd * values[index]) / ud;
     }
     return DoubleArray.ofUnsafe(values);
   }
@@ -64,9 +89,10 @@ abstract class KnockoutOptionFunction implements OptionFunction {
     double[] res = new double[nNodes];
     double barrierLevel = getBarrierLevel(i);
     double rebate = getRebate(i);
+    boolean isDown = getBarrierType().isDown();
     for (int j = 0; j < nNodes; ++j) {
-      if ((getBarrierType().equals(BarrierType.DOWN) && stateValue.get(j) <= barrierLevel) ||
-          (getBarrierType().equals(BarrierType.UP) && stateValue.get(j) >= barrierLevel)) {
+      if ((isDown && stateValue.get(j) <= barrierLevel) ||
+          (!isDown && stateValue.get(j) >= barrierLevel)) {
         res[j] = rebate;
       } else {
         double upProb = transitionProbability.get(j, 2);
@@ -81,17 +107,16 @@ abstract class KnockoutOptionFunction implements OptionFunction {
       double bd = barrierLevel - stateValue.get(index);
       double ub = stateValue.get(index + 1) - barrierLevel;
       double ud = stateValue.get(index + 1) - stateValue.get(index);
-      if (getBarrierType().equals(BarrierType.UP)) { // TODO combine two cases
-        res[index] = 0.5 * res[index] + 0.5 * (ub / ud * rebate + bd / ud * res[index]);
-      }
-      if (getBarrierType().equals(BarrierType.DOWN)) { // TODO use isDown
-        res[index + 1] = 0.5 * res[index + 1] + 0.5 *
-            (bd / ud * rebate + ub / ud * res[index + 1]);
+      if (isDown) {
+        res[index + 1] = 0.5 * res[index + 1] + 0.5 * (bd * rebate + ub * res[index + 1]) / ud;
+      } else {
+        res[index] = 0.5 * res[index] + 0.5 * (ub * rebate + bd * res[index]) / ud;
       }
     }
     return DoubleArray.ofUnsafe(res);
   }
 
+  //-------------------------------------------------------------------------
   private int getLowerBoundIndex(DoubleArray set, double value) {
     int n = set.size();
     if (value < set.get(0)) {
