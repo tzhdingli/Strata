@@ -21,8 +21,10 @@ import org.testng.annotations.Test;
 
 import com.opengamma.strata.basics.currency.CurrencyAmount;
 import com.opengamma.strata.basics.currency.MultiCurrencyAmount;
+import com.opengamma.strata.market.curve.CurveCurrencyParameterSensitivities;
 import com.opengamma.strata.pricer.impl.tree.RecombiningTrinomialTreeData;
 import com.opengamma.strata.pricer.rate.ImmutableRatesProvider;
+import com.opengamma.strata.pricer.sensitivity.RatesFiniteDifferenceSensitivityCalculator;
 import com.opengamma.strata.product.fx.BarrierType;
 import com.opengamma.strata.product.fx.KnockType;
 import com.opengamma.strata.product.fx.ResolvedFxSingle;
@@ -296,6 +298,18 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
   }
 
   //-------------------------------------------------------------------------
+  public void test_presentValueSensitivity() {
+    ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
+        new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(21);
+    CurveCurrencyParameterSensitivities computed =
+        pricer.presentValueCurveParameterSensitivity(CALL_UKI_C, RATE_PROVIDER, VOL_PROVIDER);
+    RatesFiniteDifferenceSensitivityCalculator calc = new RatesFiniteDifferenceSensitivityCalculator(1.0e-5);
+    CurveCurrencyParameterSensitivities expected =
+        calc.sensitivity(RATE_PROVIDER, p -> pricer.presentValue(CALL_UKI_C, p, VOL_PROVIDER));
+    assertTrue(computed.equalWithTolerance(expected, 1.0e-13));
+  }
+
+  //-------------------------------------------------------------------------
   public void test_withData() {
     ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer pricer =
         new ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer(5);
@@ -303,8 +317,8 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
     double price = pricer.price(CALL_UKI_C, RATE_PROVIDER, VOL_PROVIDER);
     double priceWithData = pricer.price(CALL_UKI_C, RATE_PROVIDER, VOL_PROVIDER, data);
     assertEquals(price, priceWithData);
-    CurrencyAmount pv = pricer.presnetValue(CALL_DKO, RATE_PROVIDER, VOL_PROVIDER);
-    CurrencyAmount pvWithData = pricer.presnetValue(CALL_DKO, RATE_PROVIDER, VOL_PROVIDER, data);
+    CurrencyAmount pv = pricer.presentValue(CALL_DKO, RATE_PROVIDER, VOL_PROVIDER);
+    CurrencyAmount pvWithData = pricer.presentValue(CALL_DKO, RATE_PROVIDER, VOL_PROVIDER, data);
     assertEquals(pv, pvWithData);
     MultiCurrencyAmount ce = pricer.currencyExposure(CALL_UKI_C, RATE_PROVIDER, VOL_PROVIDER);
     MultiCurrencyAmount ceWithData = pricer.currencyExposure(CALL_UKI_C, RATE_PROVIDER, VOL_PROVIDER, data);
@@ -315,7 +329,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricerTest {
     assertThrowsIllegalArg(() -> PRICER_89.calibrateTrinomialTree(CALL_DKO, RATE_PROVIDER_AFTER, VOL_PROVIDER_AFTER));
     // pricing also fails because trinomial data can not be obtained
     assertThrowsIllegalArg(() -> PRICER_89.price(CALL_DKO, RATE_PROVIDER_AFTER, VOL_PROVIDER_AFTER));
-    assertThrowsIllegalArg(() -> PRICER_89.presnetValue(CALL_DKO, RATE_PROVIDER_AFTER, VOL_PROVIDER_AFTER));
+    assertThrowsIllegalArg(() -> PRICER_89.presentValue(CALL_DKO, RATE_PROVIDER_AFTER, VOL_PROVIDER_AFTER));
     assertThrowsIllegalArg(() -> PRICER_89.currencyExposure(CALL_DKO, RATE_PROVIDER_AFTER, VOL_PROVIDER_AFTER));
   }
 

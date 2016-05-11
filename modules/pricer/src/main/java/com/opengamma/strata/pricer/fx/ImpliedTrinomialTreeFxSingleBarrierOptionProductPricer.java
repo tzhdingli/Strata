@@ -6,8 +6,12 @@
 package com.opengamma.strata.pricer.fx;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.function.Function;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.math.DoubleMath;
 import com.opengamma.strata.basics.currency.Currency;
 import com.opengamma.strata.basics.currency.CurrencyAmount;
@@ -17,12 +21,18 @@ import com.opengamma.strata.basics.value.ValueDerivatives;
 import com.opengamma.strata.collect.ArgChecker;
 import com.opengamma.strata.collect.array.DoubleArray;
 import com.opengamma.strata.collect.tuple.DoublesPair;
+import com.opengamma.strata.market.curve.Curve;
+import com.opengamma.strata.market.curve.CurveCurrencyParameterSensitivities;
+import com.opengamma.strata.market.curve.CurveCurrencyParameterSensitivity;
+import com.opengamma.strata.market.curve.CurveMetadata;
+import com.opengamma.strata.market.curve.NodalCurve;
 import com.opengamma.strata.market.view.DiscountFactors;
 import com.opengamma.strata.pricer.impl.tree.ConstantContinuousSingleBarrierKnockoutFunction;
 import com.opengamma.strata.pricer.impl.tree.EuropeanVanillaOptionFunction;
 import com.opengamma.strata.pricer.impl.tree.RecombiningTrinomialTreeData;
 import com.opengamma.strata.pricer.impl.tree.TrinomialTree;
 import com.opengamma.strata.pricer.impl.volatility.local.ImpliedTrinomialTreeLocalVolatilityCalculator;
+import com.opengamma.strata.pricer.rate.ImmutableRatesProvider;
 import com.opengamma.strata.pricer.rate.RatesProvider;
 import com.opengamma.strata.product.fx.ResolvedFxSingle;
 import com.opengamma.strata.product.fx.ResolvedFxSingleBarrierOption;
@@ -50,7 +60,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
   /**
    * Default number of time steps. 
    */
-  private static final int NUM_STEPS_DEFAULT = 101;
+  private static final int NUM_STEPS_DEFAULT = 51;
 
   /**
    * Number of time steps.
@@ -141,13 +151,13 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
    * @param volatilityProvider  the Black volatility provider
    * @return the present value of the product
    */
-  public CurrencyAmount presnetValue(
+  public CurrencyAmount presentValue(
       ResolvedFxSingleBarrierOption option,
       RatesProvider ratesProvider,
       BlackVolatilityFxProvider volatilityProvider) {
 
     RecombiningTrinomialTreeData data = calibrateTrinomialTree(option, ratesProvider, volatilityProvider);
-    return presnetValue(option, ratesProvider, volatilityProvider, data);
+    return presentValue(option, ratesProvider, volatilityProvider, data);
   }
 
   /**
@@ -165,7 +175,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
    * @param treeData  the trinomial tree data
    * @return the present value of the product
    */
-  public CurrencyAmount presnetValue(
+  public CurrencyAmount presentValue(
       ResolvedFxSingleBarrierOption option,
       RatesProvider ratesProvider,
       BlackVolatilityFxProvider volatilityProvider,
@@ -174,6 +184,82 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
     double price = price(option, ratesProvider, volatilityProvider, treeData);
     ResolvedFxVanillaOption underlyingOption = option.getUnderlyingOption();
     return CurrencyAmount.of(underlyingOption.getCounterCurrency(), signedNotional(underlyingOption) * price);
+  }
+
+  //-------------------------------------------------------------------------
+  /**
+   * Calculates the present value sensitivity of the FX barrier option product.
+   * <p>
+   * The present value sensitivity of the product is the sensitivity of {@link #presentValue} to
+   * the underlying curve parameters.
+   * <p>
+   * The sensitivity is computed by bump and re-price.
+   * 
+   * @param option  the option product
+   * @param ratesProvider  the rates provider
+   * @param volatilityProvider  the Black volatility provider
+   * @return the present value of the product
+   */
+  public CurveCurrencyParameterSensitivities presentValueCurveParameterSensitivity(
+      ResolvedFxSingleBarrierOption option,
+      RatesProvider ratesProvider,
+      BlackVolatilityFxProvider volatilityProvider) {
+
+    RecombiningTrinomialTreeData baseData = calibrateTrinomialTree(option, ratesProvider, volatilityProvider);
+    return presentValueCurveParameterSensitivity(option, ratesProvider, volatilityProvider, baseData);
+  }
+
+  /**
+   * Calculates the present value sensitivity of the FX barrier option product.
+   * <p>
+   * The present value sensitivity of the product is the sensitivity of {@link #presentValue} to
+   * the underlying curve parameters.
+   * <p>
+   * The sensitivity is computed by bump and re-price.
+   * 
+   * @param option  the option product
+   * @param ratesProvider  the rates provider
+   * @param volatilityProvider  the Black volatility provider
+   * @param baseTreeData  the trinomial tree data
+   * @return the present value of the product
+   */
+  public CurveCurrencyParameterSensitivities presentValueCurveParameterSensitivity(
+      ResolvedFxSingleBarrierOption option,
+      RatesProvider ratesProvider,
+      BlackVolatilityFxProvider volatilityProvider,
+      RecombiningTrinomialTreeData baseTreeData) {
+
+    double shift = 1.0e-5;
+    CurrencyAmount pvBase = presentValue(option, ratesProvider, volatilityProvider, baseTreeData);
+    ResolvedFxVanillaOption underlyingOption = option.getUnderlyingOption();
+    ResolvedFxSingle underlyingFx = underlyingOption.getUnderlying();
+    CurrencyPair currencyPair = underlyingFx.getCurrencyPair();
+    ImmutableRatesProvider immRatesProvider = (ImmutableRatesProvider) ratesProvider;
+    ImmutableMap<Currency, Curve> baseCurves = immRatesProvider.getDiscountCurves();
+    CurveCurrencyParameterSensitivities result = CurveCurrencyParameterSensitivities.empty();
+
+    for (Entry<Currency, Curve> entry : baseCurves.entrySet()) {
+      if (currencyPair.contains(entry.getKey())) {
+        NodalCurve nodalCurve = entry.getValue().toNodalCurve();
+        int nParams = nodalCurve.getXValues().size();
+        DoubleArray sensitivity = DoubleArray.of(nParams, i -> {
+          Curve dscBumped = bumpedCurve(nodalCurve, shift, i);
+          Map<Currency, Curve> mapBumped = new HashMap<>(baseCurves);
+          mapBumped.put(entry.getKey(), dscBumped);
+          ImmutableRatesProvider providerDscBumped = immRatesProvider.toBuilder().discountCurves(mapBumped).build();
+          double pvBumped = presentValue(option, providerDscBumped, volatilityProvider).getAmount();
+          return (pvBumped - pvBase.getAmount()) / shift;
+        });
+        CurveMetadata metadata = entry.getValue().getMetadata();
+        result = result.combinedWith(CurveCurrencyParameterSensitivity.of(metadata, pvBase.getCurrency(), sensitivity));
+      }
+    }
+    return result;
+  }
+
+  private NodalCurve bumpedCurve(NodalCurve curveInt, double shift, int loopnode) {
+    DoubleArray yValues = curveInt.getYValues();
+    return curveInt.withYValues(yValues.with(loopnode, yValues.get(loopnode) + shift));
   }
 
   //-------------------------------------------------------------------------
