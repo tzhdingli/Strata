@@ -90,7 +90,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
    * <p>
    * The price of the product is the value on the valuation date for one unit of the base currency 
    * and is expressed in the counter currency. The price does not take into account the long/short flag. 
-   * See {@linkplain #presnetValue(ResolvedFxSingleBarrierOption, RatesProvider, BlackVolatilityFxProvider) presentValue} 
+   * See {@linkplain #presentValue(ResolvedFxSingleBarrierOption, RatesProvider, BlackVolatilityFxProvider) presentValue} 
    * for scaling and currency.
    * <p>
    * The trinomial tree is first calibrated to Black volatilities, 
@@ -115,7 +115,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
    * <p>
    * The price of the product is the value on the valuation date for one unit of the base currency 
    * and is expressed in the counter currency. The price does not take into account the long/short flag. 
-   * See {@linkplain #presnetValue(ResolvedFxSingleBarrierOption, RatesProvider, BlackVolatilityFxProvider, RecombiningTrinomialTreeData) presnetValue} 
+   * See {@linkplain #presentValue(ResolvedFxSingleBarrierOption, RatesProvider, BlackVolatilityFxProvider, RecombiningTrinomialTreeData) presnetValue} 
    * for scaling and currency.
    * <p>
    * This assumes the tree is already calibrated and the tree data is stored as {@code RecombiningTrinomialTreeData}.
