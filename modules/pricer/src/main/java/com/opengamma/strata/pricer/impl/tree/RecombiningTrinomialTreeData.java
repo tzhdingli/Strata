@@ -88,13 +88,16 @@ public final class RecombiningTrinomialTreeData implements ImmutableBean, Serial
       DoubleArray time) {
 
     int nSteps = discountFactor.size();
-    ArgChecker.isTrue(stateValue.rowCount() == nSteps + 1, "");
-    ArgChecker.isTrue(transitionProbability.size() == nSteps, "");
-    ArgChecker.isTrue(time.size() == nSteps + 1, "");
+    ArgChecker.isTrue(stateValue.rowCount() == nSteps + 1, "the number of rows of stateValue must be (nSteps + 1)");
+    ArgChecker.isTrue(transitionProbability.size() == nSteps, "the size of transitionProbability list must be nSteps");
+    ArgChecker.isTrue(time.size() == nSteps + 1, "the size of time must be (nSteps + 1)");
     for (int i = 0; i < nSteps; ++i) {
-      ArgChecker.isTrue(stateValue.row(i).size() == 2 * i + 1);
-      ArgChecker.isTrue(transitionProbability.get(i).rowCount() == 2 * i + 1);
-      ArgChecker.isTrue(transitionProbability.get(i).columnCount() == 3);
+      ArgChecker.isTrue(stateValue.row(i).size() == 2 * i + 1,
+          "the i-th row of stateValue must have the size (2 * i + 1)");
+      ArgChecker.isTrue(transitionProbability.get(i).rowCount() == 2 * i + 1,
+          "the i-th element of transitionProbability list must have (2 * i + 1) rows");
+      ArgChecker.isTrue(transitionProbability.get(i).columnCount() == 3,
+          "the i-th element of transitionProbability list must have 3 columns");
     }
     ArgChecker.isTrue(stateValue.row(nSteps).size() == 2 * nSteps + 1);
     return new RecombiningTrinomialTreeData(stateValue, transitionProbability, discountFactor, time);

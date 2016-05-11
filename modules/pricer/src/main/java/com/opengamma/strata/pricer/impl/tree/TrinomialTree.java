@@ -86,9 +86,7 @@ public class TrinomialTree {
   }
 
   /**
-   * Compute option price and Greeks under the specified trinomial tree gird.
-   * <p>
-   * The derivatives are [0] spot, [1] spot twice, and [2] time to expiry. 
+   * Compute option price and delta under the specified trinomial tree gird.
    * 
    * @param function  the option
    * @param data  the trinomial tree data
@@ -102,21 +100,17 @@ public class TrinomialTree {
     ArgChecker.isTrue(nSteps == function.getNumberOfSteps(), "mismatch in number of steps");
     DoubleArray values = function.getPayoffAtExpiryTrinomial(data.getStateValueAtLayer(nSteps));
     double delta = 0d;
-    double gamma = 0d;
-    double theta = 0d;
     for (int i = nSteps - 1; i > -1; --i) {
       values = function.getNextOptionValues(
           data.getDiscountFactorAtLayer(i), data.getProbabilityAtLayer(i), data.getStateValueAtLayer(i), values, i);
       if (i == 1) {
         DoubleArray stateValue = data.getStateValueAtLayer(1);
-        double d1 = (values.get(2) - values.get(1)) / stateValue.get(2) - stateValue.get(1);
+        double d1 = (values.get(2) - values.get(1)) / (stateValue.get(2) - stateValue.get(1));
         double d2 = (values.get(1) - values.get(0)) / (stateValue.get(1) - stateValue.get(0));
         delta = 0.5 * (d1 + d2);
-        gamma = 2d * (d1 - d2) / stateValue.get(2) - stateValue.get(0);
-        theta = (stateValue.get(1) - data.getSpot()) / data.getTime(1); // valid approximation for middle factor = 1
       }
     }
-    return ValueDerivatives.of(values.get(0), DoubleArray.of(delta, gamma, theta));
+    return ValueDerivatives.of(values.get(0), DoubleArray.of(delta));
   }
 
 }

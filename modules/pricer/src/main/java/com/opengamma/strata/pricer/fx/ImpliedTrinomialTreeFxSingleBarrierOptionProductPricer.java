@@ -193,10 +193,6 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
       RatesProvider ratesProvider,
       BlackVolatilityFxProvider volatilityProvider) {
 
-    ResolvedFxVanillaOption underlyingOption = option.getUnderlyingOption();
-    if (volatilityProvider.relativeTime(underlyingOption.getExpiry()) < 0d) {
-      return MultiCurrencyAmount.empty();
-    }
     RecombiningTrinomialTreeData data = calibrateTrinomialTree(option, ratesProvider, volatilityProvider);
     return currencyExposure(option, ratesProvider, volatilityProvider, data);
   }
@@ -220,11 +216,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
       RecombiningTrinomialTreeData treeData) {
 
     ResolvedFxVanillaOption underlyingOption = option.getUnderlyingOption();
-    if (volatilityProvider.relativeTime(underlyingOption.getExpiry()) < 0d) {
-      return MultiCurrencyAmount.empty();
-    }
-    RecombiningTrinomialTreeData data = calibrateTrinomialTree(option, ratesProvider, volatilityProvider);
-    ValueDerivatives priceDerivatives = priceDerivatives(option, ratesProvider, volatilityProvider, data);
+    ValueDerivatives priceDerivatives = priceDerivatives(option, ratesProvider, volatilityProvider, treeData);
     double price = priceDerivatives.getValue();
     double delta = priceDerivatives.getDerivative(0);
     CurrencyPair currencyPair = underlyingOption.getUnderlying().getCurrencyPair();
@@ -255,6 +247,9 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
 
     validate(option, ratesProvider, volatilityProvider);
     ResolvedFxVanillaOption underlyingOption = option.getUnderlyingOption();
+    if (volatilityProvider.relativeTime(underlyingOption.getExpiry()) <= 0d) {
+      throw new IllegalArgumentException("option expired");
+    }
     double timeToExpiry = volatilityProvider.relativeTime(underlyingOption.getExpiry());
     ResolvedFxSingle underlyingFx = underlyingOption.getUnderlying();
     CurrencyPair currencyPair = underlyingFx.getCurrencyPair();
@@ -307,7 +302,7 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
     DiscountFactors baseDiscountFactors = ratesProvider.discountFactors(ccyBase);
     DiscountFactors counterDiscountFactors = ratesProvider.discountFactors(ccyCounter);
     double rebateAtExpiry = 0d; // used to price knock-in option
-    double[] rebateAtExpiryDerivative = new double[3]; // used to price knock-in option
+    double rebateAtExpiryDerivative = 0d; // used to price knock-in option
     double notional = Math.abs(underlyingFx.getBaseCurrencyPayment().getAmount());
     double[] rebateArray = new double[nSteps + 1];
     SimpleConstantContinuousBarrier barrier = (SimpleConstantContinuousBarrier) option.getBarrier();
@@ -320,19 +315,15 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
         double dfCounterAtExpiry = counterDiscountFactors.discountFactor(timeToExpiry);
         double dfBaseAtExpiry = baseDiscountFactors.discountFactor(timeToExpiry);
         for (int i = 0; i < nSteps + 1; ++i) {
-          rebateArray[i] = isCounter ? rebate * dfCounterAtExpiry /
-              counterDiscountFactors.discountFactor(data.getTime(i)) :
+          rebateArray[i] = isCounter ?
+              rebate * dfCounterAtExpiry / counterDiscountFactors.discountFactor(data.getTime(i)) :
               rebate * dfBaseAtExpiry / baseDiscountFactors.discountFactor(data.getTime(i));
         }
         if (isCounter) {
           rebateAtExpiry = rebatePerUnit * dfCounterAtExpiry;
-          rebateAtExpiryDerivative[2] =
-              rebatePerUnit * dfCounterAtExpiry * counterDiscountFactors.zeroRate(timeToExpiry);
         } else {
           rebateAtExpiry = rebatePerUnit * data.getSpot() * dfBaseAtExpiry;
-          rebateAtExpiryDerivative[0] = rebatePerUnit * dfBaseAtExpiry;
-          rebateAtExpiryDerivative[2] =
-              rebatePerUnit * data.getSpot() * dfBaseAtExpiry * baseDiscountFactors.zeroRate(timeToExpiry);
+          rebateAtExpiryDerivative = rebatePerUnit * dfBaseAtExpiry;
         }
       } else {
         Arrays.fill(rebateArray, rebate);
@@ -351,11 +342,8 @@ public class ImpliedTrinomialTreeFxSingleBarrierOptionProductPricer {
       EuropeanVanillaOptionFunction vanillaFunction = EuropeanVanillaOptionFunction.of(
           underlyingOption.getStrike(), timeToExpiry, underlyingOption.getPutCall(), nSteps);
       ValueDerivatives vanillaPrice = TREE.optionPriceAdjoint(vanillaFunction, data);
-      return ValueDerivatives.of(
-          vanillaPrice.getValue() + rebateAtExpiry - barrierPrice.getValue(),
-          vanillaPrice.getDerivatives()
-              .plus(DoubleArray.ofUnsafe(rebateAtExpiryDerivative))
-              .minus(barrierPrice.getDerivatives()));
+      return ValueDerivatives.of(vanillaPrice.getValue() + rebateAtExpiry - barrierPrice.getValue(),
+          DoubleArray.of(vanillaPrice.getDerivative(0) + rebateAtExpiryDerivative - barrierPrice.getDerivative(0)));
     }
     return barrierPrice;
   }

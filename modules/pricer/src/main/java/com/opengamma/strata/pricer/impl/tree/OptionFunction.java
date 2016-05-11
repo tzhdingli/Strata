@@ -84,7 +84,7 @@ public interface OptionFunction {
    * @param upProbability  the up probability
    * @param middleProbability  the middle probability
    * @param downProbability  the down probability
-   * @param values  the option values in the (i+1)-th layer
+   * @param value  the option values in the (i+1)-th layer
    * @param spot  the spot
    * @param downFactor  the down factor
    * @param middleFactor  the middle factor
@@ -96,7 +96,7 @@ public interface OptionFunction {
       double upProbability,
       double middleProbability,
       double downProbability,
-      DoubleArray values,
+      DoubleArray value,
       double spot,
       double downFactor,
       double middleFactor,
@@ -107,7 +107,7 @@ public interface OptionFunction {
     double[][] probs = new double[nNodes][];
     Arrays.fill(probs, probsAtNode);
     DoubleArray stateValue = DoubleArray.of(nNodes, k -> spot * Math.pow(downFactor, i - k) * Math.pow(middleFactor, k));
-    return getNextOptionValues(discountFactor, DoubleMatrix.ofUnsafe(probs), stateValue, values, i);
+    return getNextOptionValues(discountFactor, DoubleMatrix.ofUnsafe(probs), stateValue, value, i);
   }
 
   /**
@@ -122,7 +122,7 @@ public interface OptionFunction {
    * @param discountFactor  the discount factor between the two layers
    * @param transitionProbability  the transition probability
    * @param stateValue  the state value
-   * @param values  the option value
+   * @param value  the option value
    * @param i  the steps
    * @return the option values in the i-th layer
    */
@@ -130,7 +130,7 @@ public interface OptionFunction {
       double discountFactor,
       DoubleMatrix transitionProbability,
       DoubleArray stateValue,
-      DoubleArray values,
+      DoubleArray value,
       int i) {
 
     int nNodes = 2 * i + 1;
@@ -140,7 +140,7 @@ public interface OptionFunction {
       double middleProbability = transitionProbability.get(j, 1);
       double downProbability = transitionProbability.get(j, 0);
       res[j] = discountFactor *
-          (upProbability * values.get(j + 2) + middleProbability * values.get(j + 1) + downProbability * values.get(j));
+          (upProbability * value.get(j + 2) + middleProbability * value.get(j + 1) + downProbability * value.get(j));
     }
     return DoubleArray.ofUnsafe(res);
   }

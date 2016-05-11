@@ -61,6 +61,15 @@ public interface BlackVolatilityFxProvider {
     return getVolatility(currencyPair, expiryTime, strike, forward);
   }
 
+  /**
+   * Calculates the Black volatility.
+   * 
+   * @param currencyPair  the currency pair
+   * @param expiryTime  the option expiry
+   * @param strike  the option strike
+   * @param forward  the underling forward
+   * @return the volatility
+   */
   public abstract double getVolatility(
       CurrencyPair currencyPair,
       double expiryTime,
