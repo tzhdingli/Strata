@@ -70,6 +70,11 @@ public final class DeformedSurface
     return originalSurface.getParameterCount();
   }
 
+  @Override
+  public DeformedSurface withMetadata(SurfaceMetadata metadata) {
+    return new DeformedSurface(metadata, originalSurface, deformationFunction);
+  }
+
   //-------------------------------------------------------------------------
   @Override
   public double zValue(double x, double y) {
