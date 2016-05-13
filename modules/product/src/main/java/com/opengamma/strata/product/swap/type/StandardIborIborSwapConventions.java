@@ -109,6 +109,7 @@ final class StandardIborIborSwapConventions {
           "JPY-TIBOR-JAPAN-3M-TIBOR-JAPAN-6M",
           IborRateSwapLegConvention.of(IborIndices.JPY_TIBOR_JAPAN_3M),
           IborRateSwapLegConvention.of(IborIndices.JPY_TIBOR_JAPAN_6M));
+
   //-------------------------------------------------------------------------
   /**
    * JPY standard TIBOR EUROYEN 1M vs TIBOR EUROYEN 6M swap.
