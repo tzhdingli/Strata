@@ -213,6 +213,22 @@ public interface ScenarioMarketData {
     return id.createScenarioValue(box, getScenarioCount());
   }
 
+  /**
+   * Returns set of market data which combines the data from this set of data with another set.
+   * <p>
+   * If the same item of data is available in both sets, it will be taken from this set.
+   * <p>
+   * Both sets of data must contain the same number of scenarios, or one of them must have one scenario.
+   * If one of the sets of data has one scenario, the combined set will have the scenario count
+   * of the other set.
+   *
+   * @param other  another set of market data
+   * @return a set of market data combining the data in this set with the data in the other
+   */
+  public default ScenarioMarketData combinedWith(ScenarioMarketData other) {
+    return new CombinedScenarioMarketData(this, other);
+  }
+
   //-------------------------------------------------------------------------
   /**
    * Gets the time-series associated with the specified identifier, empty if not found.
