@@ -13,7 +13,7 @@ import com.opengamma.strata.collect.array.DoubleArray;
 /**
  * Extrapolator implementation that returns a value linearly in terms of {@code (x[i], x[i] * y[i])}. 
  * <p>
- * The gradient of the extrapolation is obtained from the gradient of the {@code (x[i], x[i] * y[i])} curve 
+ * The gradient of the extrapolation is obtained from the gradient of the interpolated curve on {@code (x[i], x[i] * y[i])}  
  * at the first/last node.
  * <p>
  * The extrapolation is ambiguous at x=0. Thus the following rule applies: 

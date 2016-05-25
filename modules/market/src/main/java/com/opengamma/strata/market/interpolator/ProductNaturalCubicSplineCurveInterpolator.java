@@ -20,7 +20,7 @@ import com.opengamma.strata.math.impl.interpolation.PiecewisePolynomialResultsWi
  * Given a data set {@code (x[i], y[i])}, interpolate {@code (x[i], x[i] * y[i])} by natural cubic spline. 
  * See {@link NaturalSplineInterpolator} for the detail on the underlying interpolator. 
  * <p>
- * As a curve for the product {@code x * y} is not well defined at {@code x = 0}, we impose all of the x data to be the 
+ * As a curve for the product {@code x * y} is not well-defined at {@code x = 0}, we impose all of the x data to be the 
  * same sign such that the origin is not within data range.
  * Also the x key value must not be close to zero.
  */
